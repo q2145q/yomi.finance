@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.tax_logic import calc_line_totals
+from app.core.budget_template import BUDGET_TEMPLATE
 from app.database import get_db
 from app.models.budget import (
     BudgetCategory,
@@ -215,3 +216,101 @@ async def save_limit(project_id: int, db: AsyncSession = Depends(get_db)):
             db.add(BudgetLimit(project_id=project_id, line_id=line.id, amount=plan_total))
     await db.commit()
     return {"status": "ok", "lines_updated": len(lines)}
+
+
+# ─── Template ─────────────────────────────────────────────────────────────────
+
+@router.post("/apply-template", status_code=200)
+async def apply_template(project_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    Заполнить бюджет стандартным шаблоном кинопроизводства.
+    Добавляет только отсутствующие категории/подкатегории/строки.
+    Существующие данные не удаляются.
+    """
+    # Загружаем всё дерево сразу с eager loading
+    existing = await db.execute(
+        select(BudgetCategory)
+        .options(
+            selectinload(BudgetCategory.subcategories)
+            .selectinload(BudgetSubcategory.lines)
+        )
+        .where(BudgetCategory.project_id == project_id)
+    )
+    categories = existing.scalars().all()
+
+    # Строим индексы из уже загруженных данных
+    # cat_name → {sub_name → {line_name}}
+    existing_index: dict[str, dict[str, set[str]]] = {}
+    cat_id_map: dict[str, int] = {}
+    sub_id_map: dict[str, dict[str, int]] = {}  # cat_name → {sub_name → sub_id}
+
+    for cat in categories:
+        existing_index[cat.name] = {}
+        cat_id_map[cat.name] = cat.id
+        sub_id_map[cat.name] = {}
+        for sub in cat.subcategories:
+            existing_index[cat.name][sub.name] = {ln.name for ln in sub.lines}
+            sub_id_map[cat.name][sub.name] = sub.id
+
+    stats = {"categories": 0, "subcategories": 0, "lines": 0}
+
+    for cat_idx, cat_tpl in enumerate(BUDGET_TEMPLATE):
+        cat_name = cat_tpl["name"]
+
+        # Создать категорию если нет
+        if cat_name not in existing_index:
+            cat_obj = BudgetCategory(
+                project_id=project_id,
+                name=cat_name,
+                order_index=cat_idx,
+            )
+            db.add(cat_obj)
+            await db.flush()
+            existing_index[cat_name] = {}
+            cat_id_map[cat_name] = cat_obj.id
+            sub_id_map[cat_name] = {}
+            stats["categories"] += 1
+
+        for sub_idx, sub_tpl in enumerate(cat_tpl["subcategories"]):
+            sub_name = sub_tpl["name"]
+
+            # Создать подкатегорию если нет
+            if sub_name not in existing_index[cat_name]:
+                sub_obj = BudgetSubcategory(
+                    category_id=cat_id_map[cat_name],
+                    name=sub_name,
+                    order_index=sub_idx,
+                )
+                db.add(sub_obj)
+                await db.flush()
+                existing_index[cat_name][sub_name] = set()
+                sub_id_map[cat_name][sub_name] = sub_obj.id
+                stats["subcategories"] += 1
+
+            sub_id = sub_id_map[cat_name][sub_name]
+            existing_lines = existing_index[cat_name][sub_name]
+
+            for line_idx, line_name in enumerate(sub_tpl["lines"]):
+                if line_name not in existing_lines:
+                    db.add(BudgetLine(
+                        subcategory_id=sub_id,
+                        name=line_name,
+                        unit_type="Смена",
+                        rate=0.0,
+                        qty_plan=1.0,
+                        qty_fact=0.0,
+                        tax_type="СЗ",
+                        tax_rate_1=6.0,
+                        tax_rate_2=0.0,
+                        ot_rate=0.0,
+                        ot_hours_plan=0.0,
+                        ot_shifts_plan=0.0,
+                        ot_hours_fact=0.0,
+                        ot_shifts_fact=0.0,
+                        paid=0.0,
+                        order_index=line_idx,
+                    ))
+                    stats["lines"] += 1
+
+    await db.commit()
+    return {"status": "ok", **stats}
