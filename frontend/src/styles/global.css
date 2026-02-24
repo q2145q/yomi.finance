@@ -171,15 +171,77 @@ a:hover { text-decoration: underline; }
 .params-form h2 { font-size: 20px; margin-bottom: 8px; }
 
 /* ─── Handsontable overrides ──────────────────────────────────────────────── */
-.handsontable .row-category td {
-  background: var(--color-category) !important;
-  color: var(--color-category-text) !important;
-  font-weight: 700;
+
+/* Базовые стили таблицы */
+.handsontable td, .handsontable th {
+  border-color: #2a2e42 !important;
 }
+.handsontable td {
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+/* Чередование строк */
+.handsontable tr:nth-child(even) td {
+  background: #1e2232;
+}
+
+/* ── Строка категории (уровень 1) ─────────────────────────────────────────── */
+.handsontable .row-category td {
+  background: #1a2f5a !important;
+  color: #c8d8ff !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.02em;
+  border-top: 2px solid #4f8ef7 !important;
+  border-bottom: 1px solid #3a5aaa !important;
+}
+
+/* ── Строка подкатегории (уровень 2) ──────────────────────────────────────── */
 .handsontable .row-subcategory td {
-  background: var(--color-subcategory) !important;
-  color: var(--color-subcategory-text) !important;
+  background: #1e2d4a !important;
+  color: #a8c0f0 !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  border-bottom: 1px solid #2e3c6a !important;
+}
+
+/* Числа в итоговых строках — выравнивание по правому краю */
+.handsontable .row-category td:nth-child(n+19),
+.handsontable .row-subcategory td:nth-child(n+19) {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Выделение текущей ячейки */
+.handsontable td.current {
+  outline: 2px solid var(--color-primary) !important;
+  outline-offset: -2px;
+}
+
+/* Шапка */
+.handsontable thead th {
+  background: #141720 !important;
+  color: #8892a4 !important;
+  font-size: 11px !important;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #2e3247 !important;
+  white-space: nowrap;
+}
+
+/* Замороженные столбцы — чуть темнее */
+.handsontable .htCore td.htNoWrap {
+  white-space: nowrap;
+}
+.ht_clone_left td {
+  background: #161a26 !important;
+}
+.ht_clone_left .row-category td {
+  background: #1a2f5a !important;
+}
+.ht_clone_left .row-subcategory td {
+  background: #1e2d4a !important;
 }
 
 /* ─── Modal ───────────────────────────────────────────────────────────────── */
