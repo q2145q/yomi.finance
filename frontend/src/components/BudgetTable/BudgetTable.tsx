@@ -1,11 +1,10 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useCallback } from 'react'
 import Handsontable from 'handsontable'
 import { HotTable, HotTableClass } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import 'handsontable/dist/handsontable.full.min.css'
 
 import type { BudgetCategory } from '@/types'
-import type { TableRow } from './dataAdapter'
 import { buildTableData } from './dataAdapter'
 import { COLUMN_DEFS, FROZEN_COLS } from './columns'
 import { budgetApi } from '@/api/budget'
@@ -33,7 +32,7 @@ export default function BudgetTable({ projectId, categories, onRefresh }: Props)
 
   const tableData = buildTableData(categories)
 
-  const getData = () => tableData.map((row) => COL_KEYS.map((k) => (row as Record<string, unknown>)[k] ?? ''))
+  const getData = () => tableData.map((row) => COL_KEYS.map((k) => (row as unknown as Record<string, unknown>)[k] ?? ''))
 
   const columns: Handsontable.ColumnSettings[] = COLUMN_DEFS.map((def) => {
     const col: Handsontable.ColumnSettings = {

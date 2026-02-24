@@ -4,7 +4,6 @@
  */
 
 import type { BudgetCategory, BudgetLine, BudgetSubcategory } from '@/types'
-import { calcLineTotals } from '@/utils/taxCalc'
 
 export type RowType = 'category' | 'subcategory' | 'line'
 

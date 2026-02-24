@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { projectsApi } from '@/api/projects'
 import type { Project } from '@/types'
 import toast from 'react-hot-toast'

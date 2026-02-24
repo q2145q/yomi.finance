@@ -1,4 +1,3 @@
-import type { ColumnSettings } from 'handsontable/settings'
 import type { TaxType, UnitType } from '@/types'
 
 export const UNIT_TYPES: UnitType[] = [
