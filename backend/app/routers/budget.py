@@ -159,6 +159,14 @@ async def create_line(
         if parent:
             level = parent.level + 1
 
+    # Автоподстановка: если явно не указана схема, берём схему контрагента
+    effective_tax_scheme_id = data.tax_scheme_id
+    if not effective_tax_scheme_id and data.contractor_id:
+        cr = await db.execute(select(Contractor).where(Contractor.id == data.contractor_id))
+        c = cr.scalar_one_or_none()
+        if c and c.tax_scheme_id:
+            effective_tax_scheme_id = c.tax_scheme_id
+
     line = BudgetLine(
         project_id=project_id,
         parent_id=data.parent_id,
@@ -168,7 +176,7 @@ async def create_line(
         quantity_units=data.quantity_units,
         rate=data.rate,
         quantity=data.quantity,
-        tax_scheme_id=data.tax_scheme_id,
+        tax_scheme_id=effective_tax_scheme_id,
         contractor_id=data.contractor_id,
         currency=data.currency,
         sort_order=data.sort_order,
@@ -198,8 +206,31 @@ async def update_line(
     if not line:
         raise HTTPException(status_code=404, detail="Статья не найдена")
 
-    # exclude_unset позволяет явно передать None (сброс контрагента/схемы)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    update_data = data.model_dump(exclude_unset=True)
+
+    # Если пользователь явно поставил схему вручную — фиксируем override
+    # Если очистил схему — снимаем override (контрагент снова сможет автоподставить)
+    if "tax_scheme_id" in update_data:
+        if update_data["tax_scheme_id"] is not None:
+            update_data.setdefault("tax_override", True)
+        else:
+            update_data.setdefault("tax_override", False)
+
+    # Если назначается контрагент и нет ручного override и схема не меняется вручную —
+    # автоматически подтягиваем схему контрагента
+    if (
+        "contractor_id" in update_data
+        and "tax_scheme_id" not in update_data
+        and not line.tax_override
+    ):
+        new_cid = update_data["contractor_id"]
+        if new_cid:
+            cr = await db.execute(select(Contractor).where(Contractor.id == new_cid))
+            c = cr.scalar_one_or_none()
+            if c and c.tax_scheme_id:
+                update_data["tax_scheme_id"] = c.tax_scheme_id
+
+    for field, value in update_data.items():
         setattr(line, field, value)
 
     await db.commit()
