@@ -1,37 +1,40 @@
+import React, { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from 'react-hot-toast'
-import { useAuthStore } from '@/store/authStore'
-import AppLayout from '@/components/Layout/AppLayout'
-import LoginPage from '@/pages/LoginPage'
-import ProjectsPage from '@/pages/ProjectsPage'
-import BudgetPage from '@/pages/BudgetPage'
+import { useAuthStore } from './store/authStore'
+import { LoginPage } from './pages/LoginPage'
+import { ProjectsPage } from './pages/ProjectsPage'
+import { BudgetPage } from './pages/BudgetPage'
 
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { token } = useAuthStore()
-  if (!token) return <Navigate to="/login" replace />
+const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuthStore()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
-export default function App() {
+const App: React.FC = () => {
+  const { loadMe } = useAuthStore()
+
+  useEffect(() => {
+    loadMe()
+  }, [])
+
   return (
     <BrowserRouter>
-      <Toaster position="top-right" />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <AppLayout />
-            </RequireAuth>
-          }
-        >
-          <Route index element={<ProjectsPage />} />
-          <Route path="projects/:id" element={<BudgetPage />} />
-          <Route path="settings" element={<div className="page-loading">Настройки (скоро)</div>} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+          path="/projects"
+          element={<PrivateRoute><ProjectsPage /></PrivateRoute>}
+        />
+        <Route
+          path="/projects/:projectId/budget"
+          element={<PrivateRoute><BudgetPage /></PrivateRoute>}
+        />
+        <Route path="/" element={<Navigate to="/projects" replace />} />
+        <Route path="*" element={<Navigate to="/projects" replace />} />
       </Routes>
     </BrowserRouter>
   )
 }
+
+export default App

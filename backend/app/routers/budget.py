@@ -1,316 +1,196 @@
-from typing import Optional
-
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from app.core.tax_logic import calc_line_totals
-from app.core.budget_template import BUDGET_TEMPLATE
 from app.database import get_db
-from app.models.budget import (
-    BudgetCategory,
-    BudgetLimit,
-    BudgetLine,
-    BudgetSubcategory,
-)
-from app.schemas.budget import (
-    BudgetCategoryCreate,
-    BudgetCategoryRead,
-    BudgetLineCalcResult,
-    BudgetLineCreate,
-    BudgetLineRead,
-    BudgetLineUpdate,
-    BudgetSubcategoryCreate,
-    BudgetSubcategoryRead,
-)
+from app.models.budget import BudgetLine
+from app.models.user import ProjectUser
+from app.models.tax import TaxScheme
+from app.schemas.budget import BudgetLineCreate, BudgetLineUpdate, BudgetLineOut, BudgetLineMoveRequest
+from app.routers.deps import CurrentUser
+from app.core.tax_logic import calc_tax
 
-router = APIRouter(prefix="/projects/{project_id}/budget", tags=["budget"])
+# Роутер для операций внутри проекта
+router = APIRouter(prefix="/projects", tags=["budget"])
+
+# Роутер для операций со статьями по ID (без привязки к проекту в пути)
+lines_router = APIRouter(prefix="/budget/lines", tags=["budget"])
 
 
-def _enrich_line(line: BudgetLine) -> dict:
-    """Добавляет расчётные поля к строке."""
-    calc = calc_line_totals(
-        rate=line.rate,
-        qty_plan=line.qty_plan,
-        qty_fact=line.qty_fact,
-        unit_type=line.unit_type.value,
-        tax_type=line.tax_type.value,
-        tax_rate_1=line.tax_rate_1,
-        tax_rate_2=line.tax_rate_2,
-        ot_rate=line.ot_rate,
-        ot_hours_plan=line.ot_hours_plan,
-        ot_shifts_plan=line.ot_shifts_plan,
-        ot_hours_fact=line.ot_hours_fact,
-        ot_shifts_fact=line.ot_shifts_fact,
-    )
-    data = {c.name: getattr(line, c.name) for c in line.__table__.columns}
-    data["calc"] = calc
-    data["limit_amount"] = line.limit.amount if line.limit else None
-    return data
+def _compute_line(line: BudgetLine, tax_components: list[dict]) -> BudgetLineOut:
+    """Вычисляет subtotal/tax_amount/total для статьи."""
+    if line.type == "GROUP":
+        return BudgetLineOut.model_validate(line)
 
-
-# ─── Categories ──────────────────────────────────────────────────────────────
-
-@router.get("/", response_model=list[BudgetCategoryRead])
-async def get_budget(project_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(BudgetCategory)
-        .options(
-            selectinload(BudgetCategory.subcategories).selectinload(
-                BudgetSubcategory.lines
-            ).selectinload(BudgetLine.limit)
-        )
-        .where(BudgetCategory.project_id == project_id)
-        .order_by(BudgetCategory.order_index)
-    )
-    categories = result.scalars().all()
-    out = []
-    for cat in categories:
-        cat_dict = {"id": cat.id, "name": cat.name, "order_index": cat.order_index, "subcategories": []}
-        for sub in sorted(cat.subcategories, key=lambda s: s.order_index):
-            sub_dict = {"id": sub.id, "name": sub.name, "order_index": sub.order_index, "lines": []}
-            for line in sorted(sub.lines, key=lambda l: l.order_index):
-                sub_dict["lines"].append(_enrich_line(line))
-            cat_dict["subcategories"].append(sub_dict)
-        out.append(cat_dict)
+    result = calc_tax(line.rate, line.quantity, tax_components)
+    out = BudgetLineOut.model_validate(line)
+    out.subtotal = result["subtotal"]
+    out.tax_amount = result["tax_amount"]
+    out.total = result["total"]
     return out
 
 
-@router.post("/categories", response_model=BudgetCategoryRead, status_code=201)
-async def create_category(
-    project_id: int, data: BudgetCategoryCreate, db: AsyncSession = Depends(get_db)
-):
-    cat = BudgetCategory(project_id=project_id, name=data.name, order_index=data.order_index)
-    db.add(cat)
-    await db.commit()
-    await db.refresh(cat)
-    return {"id": cat.id, "name": cat.name, "order_index": cat.order_index, "subcategories": []}
+def _build_tree(lines: list[BudgetLine], scheme_map: dict, parent_id=None) -> list[BudgetLineOut]:
+    """Рекурсивно строит дерево статей бюджета."""
+    result = []
+    for line in sorted([l for l in lines if l.parent_id == parent_id], key=lambda x: x.sort_order):
+        components = []
+        if line.tax_scheme_id and line.tax_scheme_id in scheme_map:
+            components = scheme_map[line.tax_scheme_id]
+
+        out = _compute_line(line, components)
+        out.children = _build_tree(lines, scheme_map, line.id)
+
+        # Агрегируем итоги для групп
+        if line.type == "GROUP" and out.children:
+            out.subtotal = sum(c.subtotal for c in out.children)
+            out.tax_amount = sum(c.tax_amount for c in out.children)
+            out.total = sum(c.total for c in out.children)
+            out.accrued = sum(c.accrued for c in out.children)
+            out.paid = sum(c.paid for c in out.children)
+            out.closed = sum(c.closed for c in out.children)
+
+        result.append(out)
+    return result
 
 
-@router.patch("/categories/{cat_id}", response_model=BudgetCategoryRead)
-async def update_category(
-    project_id: int, cat_id: int, data: BudgetCategoryCreate, db: AsyncSession = Depends(get_db)
-):
-    cat = await db.get(BudgetCategory, cat_id)
-    if not cat or cat.project_id != project_id:
-        raise HTTPException(404)
-    cat.name = data.name
-    cat.order_index = data.order_index
-    await db.commit()
-    await db.refresh(cat)
-    return {"id": cat.id, "name": cat.name, "order_index": cat.order_index, "subcategories": []}
+async def _get_scheme_map(db: AsyncSession, lines: list[BudgetLine]) -> dict:
+    """Загружает налоговые схемы для статей."""
+    scheme_ids = list({l.tax_scheme_id for l in lines if l.tax_scheme_id})
+    scheme_map = {}
+    if scheme_ids:
+        schemes_result = await db.execute(
+            select(TaxScheme).options(selectinload(TaxScheme.components))
+            .where(TaxScheme.id.in_(scheme_ids))
+        )
+        for scheme in schemes_result.scalars().all():
+            scheme_map[scheme.id] = [
+                {"name": c.name, "rate": c.rate, "type": c.type, "recipient": c.recipient}
+                for c in scheme.components
+            ]
+    return scheme_map
 
 
-@router.delete("/categories/{cat_id}", status_code=204)
-async def delete_category(project_id: int, cat_id: int, db: AsyncSession = Depends(get_db)):
-    cat = await db.get(BudgetCategory, cat_id)
-    if not cat or cat.project_id != project_id:
-        raise HTTPException(404)
-    await db.delete(cat)
-    await db.commit()
+@router.get("/{project_id}/budget", response_model=list[BudgetLineOut])
+async def get_budget(project_id: uuid.UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Дерево статей бюджета проекта."""
+    if not current_user.is_superadmin:
+        pu_result = await db.execute(
+            select(ProjectUser).where(ProjectUser.project_id == project_id, ProjectUser.user_id == current_user.id)
+        )
+        if not pu_result.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="Нет доступа к проекту")
 
-
-# ─── Subcategories ────────────────────────────────────────────────────────────
-
-@router.post("/subcategories", response_model=BudgetSubcategoryRead, status_code=201)
-async def create_subcategory(
-    project_id: int, data: BudgetSubcategoryCreate, db: AsyncSession = Depends(get_db)
-):
-    sub = BudgetSubcategory(
-        category_id=data.category_id, name=data.name, order_index=data.order_index
+    lines_result = await db.execute(
+        select(BudgetLine).where(BudgetLine.project_id == project_id)
     )
-    db.add(sub)
-    await db.commit()
-    await db.refresh(sub)
-    return {"id": sub.id, "name": sub.name, "order_index": sub.order_index, "lines": []}
+    lines = list(lines_result.scalars().all())
+    scheme_map = await _get_scheme_map(db, lines)
+    return _build_tree(lines, scheme_map)
 
 
-@router.delete("/subcategories/{sub_id}", status_code=204)
-async def delete_subcategory(project_id: int, sub_id: int, db: AsyncSession = Depends(get_db)):
-    sub = await db.get(BudgetSubcategory, sub_id)
-    if not sub:
-        raise HTTPException(404)
-    await db.delete(sub)
-    await db.commit()
-
-
-# ─── Lines ────────────────────────────────────────────────────────────────────
-
-@router.post("/lines", response_model=BudgetLineRead, status_code=201)
+@router.post("/{project_id}/budget/lines", response_model=BudgetLineOut, status_code=status.HTTP_201_CREATED)
 async def create_line(
-    project_id: int, data: BudgetLineCreate, db: AsyncSession = Depends(get_db)
+    project_id: uuid.UUID, data: BudgetLineCreate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)
 ):
-    line = BudgetLine(**data.model_dump())
+    if not current_user.is_superadmin:
+        pu_result = await db.execute(
+            select(ProjectUser).where(ProjectUser.project_id == project_id, ProjectUser.user_id == current_user.id)
+        )
+        pu = pu_result.scalar_one_or_none()
+        if not pu or pu.role not in ("PRODUCER", "LINE_PRODUCER"):
+            raise HTTPException(status_code=403, detail="Только продюсер или линейный продюсер может редактировать бюджет")
+
+    level = 0
+    if data.parent_id:
+        parent_result = await db.execute(select(BudgetLine).where(BudgetLine.id == data.parent_id))
+        parent = parent_result.scalar_one_or_none()
+        if parent:
+            level = parent.level + 1
+
+    line = BudgetLine(
+        project_id=project_id,
+        parent_id=data.parent_id,
+        name=data.name,
+        type=data.type,
+        unit=data.unit,
+        quantity_units=data.quantity_units,
+        rate=data.rate,
+        quantity=data.quantity,
+        tax_scheme_id=data.tax_scheme_id,
+        currency=data.currency,
+        sort_order=data.sort_order,
+        level=level,
+    )
     db.add(line)
     await db.commit()
-    result = await db.execute(
-        select(BudgetLine).options(selectinload(BudgetLine.limit)).where(BudgetLine.id == line.id)
-    )
-    line = result.scalar_one()
-    return _enrich_line(line)
+    await db.refresh(line)
+
+    components = []
+    if line.tax_scheme_id:
+        scheme_map = await _get_scheme_map(db, [line])
+        components = scheme_map.get(line.tax_scheme_id, [])
+
+    return _compute_line(line, components)
 
 
-@router.patch("/lines/{line_id}", response_model=BudgetLineRead)
+# --- Операции со статьями по ID ---
+
+@lines_router.patch("/{line_id}", response_model=BudgetLineOut)
 async def update_line(
-    project_id: int, line_id: int, data: BudgetLineUpdate, db: AsyncSession = Depends(get_db)
+    line_id: uuid.UUID, data: BudgetLineUpdate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(
-        select(BudgetLine).options(selectinload(BudgetLine.limit)).where(BudgetLine.id == line_id)
-    )
+    result = await db.execute(select(BudgetLine).where(BudgetLine.id == line_id))
     line = result.scalar_one_or_none()
     if not line:
-        raise HTTPException(404)
-    for field, value in data.model_dump(exclude_unset=True).items():
+        raise HTTPException(status_code=404, detail="Статья не найдена")
+
+    for field, value in data.model_dump(exclude_none=True).items():
         setattr(line, field, value)
+
     await db.commit()
     await db.refresh(line)
-    result = await db.execute(
-        select(BudgetLine).options(selectinload(BudgetLine.limit)).where(BudgetLine.id == line_id)
-    )
-    line = result.scalar_one()
-    return _enrich_line(line)
+
+    components = []
+    if line.tax_scheme_id:
+        scheme_map = await _get_scheme_map(db, [line])
+        components = scheme_map.get(line.tax_scheme_id, [])
+
+    return _compute_line(line, components)
 
 
-@router.delete("/lines/{line_id}", status_code=204)
-async def delete_line(project_id: int, line_id: int, db: AsyncSession = Depends(get_db)):
-    line = await db.get(BudgetLine, line_id)
+@lines_router.delete("/{line_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_line(line_id: uuid.UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(BudgetLine).where(BudgetLine.id == line_id))
+    line = result.scalar_one_or_none()
     if not line:
-        raise HTTPException(404)
+        raise HTTPException(status_code=404, detail="Статья не найдена")
     await db.delete(line)
     await db.commit()
 
 
-# ─── Limit ────────────────────────────────────────────────────────────────────
+@lines_router.post("/{line_id}/move", response_model=BudgetLineOut)
+async def move_line(
+    line_id: uuid.UUID, data: BudgetLineMoveRequest, current_user: CurrentUser, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(BudgetLine).where(BudgetLine.id == line_id))
+    line = result.scalar_one_or_none()
+    if not line:
+        raise HTTPException(status_code=404, detail="Статья не найдена")
 
-@router.post("/save-limit", status_code=200)
-async def save_limit(project_id: int, db: AsyncSession = Depends(get_db)):
-    """Зафиксировать текущий план как лимит для всех строк проекта."""
-    result = await db.execute(
-        select(BudgetLine)
-        .join(BudgetSubcategory)
-        .join(BudgetCategory)
-        .options(selectinload(BudgetLine.limit))
-        .where(BudgetCategory.project_id == project_id)
-    )
-    lines = result.scalars().all()
-    for line in lines:
-        calc = calc_line_totals(
-            rate=line.rate,
-            qty_plan=line.qty_plan,
-            qty_fact=line.qty_fact,
-            unit_type=line.unit_type.value,
-            tax_type=line.tax_type.value,
-            tax_rate_1=line.tax_rate_1,
-            tax_rate_2=line.tax_rate_2,
-            ot_rate=line.ot_rate,
-            ot_hours_plan=line.ot_hours_plan,
-            ot_shifts_plan=line.ot_shifts_plan,
-            ot_hours_fact=line.ot_hours_fact,
-            ot_shifts_fact=line.ot_shifts_fact,
-        )
-        plan_total = calc["plan_total"]
-        if line.limit:
-            line.limit.amount = plan_total
-        else:
-            db.add(BudgetLimit(project_id=project_id, line_id=line.id, amount=plan_total))
-    await db.commit()
-    return {"status": "ok", "lines_updated": len(lines)}
+    line.parent_id = data.parent_id
+    line.sort_order = data.sort_order
 
-
-# ─── Template ─────────────────────────────────────────────────────────────────
-
-@router.post("/apply-template", status_code=200)
-async def apply_template(project_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    Заполнить бюджет стандартным шаблоном кинопроизводства.
-    Добавляет только отсутствующие категории/подкатегории/строки.
-    Существующие данные не удаляются.
-    """
-    # Загружаем всё дерево сразу с eager loading
-    existing = await db.execute(
-        select(BudgetCategory)
-        .options(
-            selectinload(BudgetCategory.subcategories)
-            .selectinload(BudgetSubcategory.lines)
-        )
-        .where(BudgetCategory.project_id == project_id)
-    )
-    categories = existing.scalars().all()
-
-    # Строим индексы из уже загруженных данных
-    # cat_name → {sub_name → {line_name}}
-    existing_index: dict[str, dict[str, set[str]]] = {}
-    cat_id_map: dict[str, int] = {}
-    sub_id_map: dict[str, dict[str, int]] = {}  # cat_name → {sub_name → sub_id}
-
-    for cat in categories:
-        existing_index[cat.name] = {}
-        cat_id_map[cat.name] = cat.id
-        sub_id_map[cat.name] = {}
-        for sub in cat.subcategories:
-            existing_index[cat.name][sub.name] = {ln.name for ln in sub.lines}
-            sub_id_map[cat.name][sub.name] = sub.id
-
-    stats = {"categories": 0, "subcategories": 0, "lines": 0}
-
-    for cat_idx, cat_tpl in enumerate(BUDGET_TEMPLATE):
-        cat_name = cat_tpl["name"]
-
-        # Создать категорию если нет
-        if cat_name not in existing_index:
-            cat_obj = BudgetCategory(
-                project_id=project_id,
-                name=cat_name,
-                order_index=cat_idx,
-            )
-            db.add(cat_obj)
-            await db.flush()
-            existing_index[cat_name] = {}
-            cat_id_map[cat_name] = cat_obj.id
-            sub_id_map[cat_name] = {}
-            stats["categories"] += 1
-
-        for sub_idx, sub_tpl in enumerate(cat_tpl["subcategories"]):
-            sub_name = sub_tpl["name"]
-
-            # Создать подкатегорию если нет
-            if sub_name not in existing_index[cat_name]:
-                sub_obj = BudgetSubcategory(
-                    category_id=cat_id_map[cat_name],
-                    name=sub_name,
-                    order_index=sub_idx,
-                )
-                db.add(sub_obj)
-                await db.flush()
-                existing_index[cat_name][sub_name] = set()
-                sub_id_map[cat_name][sub_name] = sub_obj.id
-                stats["subcategories"] += 1
-
-            sub_id = sub_id_map[cat_name][sub_name]
-            existing_lines = existing_index[cat_name][sub_name]
-
-            for line_idx, line_name in enumerate(sub_tpl["lines"]):
-                if line_name not in existing_lines:
-                    db.add(BudgetLine(
-                        subcategory_id=sub_id,
-                        name=line_name,
-                        unit_type="Смена",
-                        rate=0.0,
-                        qty_plan=1.0,
-                        qty_fact=0.0,
-                        tax_type="СЗ",
-                        tax_rate_1=6.0,
-                        tax_rate_2=0.0,
-                        ot_rate=0.0,
-                        ot_hours_plan=0.0,
-                        ot_shifts_plan=0.0,
-                        ot_hours_fact=0.0,
-                        ot_shifts_fact=0.0,
-                        paid=0.0,
-                        order_index=line_idx,
-                    ))
-                    stats["lines"] += 1
+    if data.parent_id:
+        parent_result = await db.execute(select(BudgetLine).where(BudgetLine.id == data.parent_id))
+        parent = parent_result.scalar_one_or_none()
+        if parent:
+            line.level = parent.level + 1
+    else:
+        line.level = 0
 
     await db.commit()
-    return {"status": "ok", **stats}
+    await db.refresh(line)
+    return BudgetLineOut.model_validate(line)

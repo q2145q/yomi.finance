@@ -1,39 +1,48 @@
-import enum
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
 
 
-class UserRole(str, enum.Enum):
-    admin = "admin"
-    line_producer = "line_producer"
-    accountant = "accountant"
-    viewer = "viewer"
+class UserRole(str):
+    PRODUCER = "PRODUCER"
+    LINE_PRODUCER = "LINE_PRODUCER"
+    DIRECTOR = "DIRECTOR"
+    ASSISTANT = "ASSISTANT"
+    CLERK = "CLERK"
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.viewer)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    project_links: Mapped[list["ProjectUser"]] = relationship(back_populates="user")
+    # Связи
+    project_users: Mapped[list["ProjectUser"]] = relationship("ProjectUser", back_populates="user", cascade="all, delete-orphan")
 
 
 class ProjectUser(Base):
+    """Связь пользователей с проектами и ролями."""
     __tablename__ = "project_users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.viewer)
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(
+        SAEnum("PRODUCER", "LINE_PRODUCER", "DIRECTOR", "ASSISTANT", "CLERK", name="user_role"),
+        nullable=False,
+    )
 
-    user: Mapped["User"] = relationship(back_populates="project_links")
-    project: Mapped["Project"] = relationship(back_populates="user_links")
+    # Связи
+    user: Mapped["User"] = relationship("User", back_populates="project_users")
+    project: Mapped["Project"] = relationship("Project", back_populates="project_users")

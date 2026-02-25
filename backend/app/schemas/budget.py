@@ -1,107 +1,70 @@
-from datetime import date
-from typing import Optional
-
+import uuid
+from datetime import datetime
 from pydantic import BaseModel
-
-from app.models.budget import TaxType, UnitType
-
-
-class BudgetLineCalcResult(BaseModel):
-    plan_net: float
-    plan_tax_1: float
-    plan_tax_2: float
-    plan_gross: float
-    plan_ot_gross: float
-    plan_total: float
-    fact_net: float
-    fact_tax_1: float
-    fact_tax_2: float
-    fact_gross: float
-    fact_ot_gross: float
-    fact_total: float
+from typing import Optional, Any
 
 
-class BudgetLineBase(BaseModel):
+class BudgetLineCreate(BaseModel):
+    parent_id: Optional[uuid.UUID] = None
     name: str
-    contractor: Optional[str] = None
-    unit_type: UnitType
+    type: str = "ITEM"
+    unit: Optional[str] = None
+    quantity_units: float = 1.0
     rate: float = 0.0
-    qty_plan: float = 0.0
-    qty_fact: float = 0.0
-    date_start: Optional[date] = None
-    date_end: Optional[date] = None
-    tax_type: TaxType
-    tax_rate_1: float = 0.0
-    tax_rate_2: float = 0.0
-    ot_rate: float = 0.0
-    ot_hours_plan: float = 0.0
-    ot_shifts_plan: float = 0.0
-    ot_hours_fact: float = 0.0
-    ot_shifts_fact: float = 0.0
-    note: Optional[str] = None
-    order_index: int = 0
-    paid: float = 0.0
-
-
-class BudgetLineCreate(BudgetLineBase):
-    subcategory_id: int
+    quantity: float = 1.0
+    tax_scheme_id: Optional[uuid.UUID] = None
+    currency: str = "RUB"
+    sort_order: int = 0
 
 
 class BudgetLineUpdate(BaseModel):
     name: Optional[str] = None
-    contractor: Optional[str] = None
-    unit_type: Optional[UnitType] = None
+    unit: Optional[str] = None
+    quantity_units: Optional[float] = None
     rate: Optional[float] = None
-    qty_plan: Optional[float] = None
-    qty_fact: Optional[float] = None
-    date_start: Optional[date] = None
-    date_end: Optional[date] = None
-    tax_type: Optional[TaxType] = None
-    tax_rate_1: Optional[float] = None
-    tax_rate_2: Optional[float] = None
-    ot_rate: Optional[float] = None
-    ot_hours_plan: Optional[float] = None
-    ot_shifts_plan: Optional[float] = None
-    ot_hours_fact: Optional[float] = None
-    ot_shifts_fact: Optional[float] = None
-    note: Optional[str] = None
-    order_index: Optional[int] = None
-    paid: Optional[float] = None
-
-
-class BudgetLineRead(BudgetLineBase):
-    id: int
-    subcategory_id: int
-    calc: BudgetLineCalcResult
+    quantity: Optional[float] = None
+    tax_scheme_id: Optional[uuid.UUID] = None
+    tax_override: Optional[bool] = None
+    currency: Optional[str] = None
     limit_amount: Optional[float] = None
+    sort_order: Optional[int] = None
+
+
+class BudgetLineOut(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    parent_id: Optional[uuid.UUID]
+    sort_order: int
+    level: int
+    code: str
+    name: str
+    type: str
+    unit: Optional[str]
+    quantity_units: float
+    rate: float
+    quantity: float
+    tax_scheme_id: Optional[uuid.UUID]
+    tax_override: bool
+    currency: str
+    limit_amount: float
+
+    # Вычисляемые поля
+    subtotal: float = 0.0
+    tax_amount: float = 0.0
+    total: float = 0.0
+
+    # Агрегаты из производственных данных (Этап 2+)
+    accrued: float = 0.0
+    paid: float = 0.0
+    closed: float = 0.0
+    advance: float = 0.0
+
+    children: list["BudgetLineOut"] = []
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class BudgetSubcategoryRead(BaseModel):
-    id: int
-    name: str
-    order_index: int
-    lines: list[BudgetLineRead] = []
-
-    model_config = {"from_attributes": True}
-
-
-class BudgetCategoryCreate(BaseModel):
-    name: str
-    order_index: int = 0
-
-
-class BudgetSubcategoryCreate(BaseModel):
-    category_id: int
-    name: str
-    order_index: int = 0
-
-
-class BudgetCategoryRead(BaseModel):
-    id: int
-    name: str
-    order_index: int
-    subcategories: list[BudgetSubcategoryRead] = []
-
-    model_config = {"from_attributes": True}
+class BudgetLineMoveRequest(BaseModel):
+    parent_id: Optional[uuid.UUID] = None
+    sort_order: int

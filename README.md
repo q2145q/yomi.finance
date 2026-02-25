@@ -1,89 +1,44 @@
-# YOMI Finance — Бюджет кинопроизводства
+# YOMI Finance
 
-Веб-приложение для управления финансами кинопроизводства.
-Домен: **finance.yomimovie.art**
+Система управления финансами кинопроизводства.
+
+## Быстрый старт (разработка)
+
+```bash
+# 1. Скопируй .env
+cp .env.example .env
+
+# 2. Запусти всё
+docker compose up -d
+
+# 3. Применить миграции
+docker compose exec backend alembic upgrade head
+
+# 4. Заполнить начальными данными (налоговые схемы + суперадмин)
+docker compose exec backend python -m app.scripts.seed
+
+# 5. Открой в браузере
+open http://localhost:3000
+```
+
+**Логин по умолчанию:** `admin@yomimovie.art` / `admin123`
 
 ## Стек
 
-| Слой | Технология |
-|------|-----------|
-| Frontend | React 18 + TypeScript + Vite |
-| Таблица | Handsontable Community |
-| Backend | FastAPI + SQLAlchemy (async) |
-| База данных | PostgreSQL 16 |
-| Деплой | Docker Compose + nginx |
+- **Backend:** Python 3.12 + FastAPI + SQLAlchemy (async) + Alembic
+- **Frontend:** React 18 + TypeScript + Vite + Handsontable + Zustand
+- **БД:** PostgreSQL 16
+- **Деплой:** Docker Compose
 
-## Быстрый старт
+## Документация
 
-```bash
-# Клонировать
-git clone https://github.com/q2145q/yomi.finance.git
-cd yomi.finance
+- [SPEC.md](./SPEC.md) — полная техническая спецификация
+- [PLAN.md](./PLAN.md) — план разработки с чекбоксами
+- [PROGRESS.md](./PROGRESS.md) — текущий статус
+- [docs/data-model.md](./docs/data-model.md) — схема данных
+- [docs/api.md](./docs/api.md) — API эндпоинты
+- [docs/deploy.md](./docs/deploy.md) — инструкция по деплою
 
-# Скопировать переменные окружения
-cp .env.example .env
+## Продакшн
 
-# Запустить всё
-docker compose up --build
-```
-
-Откройте http://localhost (frontend) или http://localhost:8000/docs (Swagger API).
-
-## Разработка (без Docker)
-
-### Backend
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-# Настроить DATABASE_URL в .env
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## Структура проекта
-
-```
-yomi.finance/
-├── backend/
-│   ├── app/
-│   │   ├── core/          # Конфиг, безопасность, налоговая логика
-│   │   ├── models/        # SQLAlchemy-модели
-│   │   ├── routers/       # FastAPI-роутеры
-│   │   ├── schemas/       # Pydantic-схемы
-│   │   └── main.py
-│   ├── alembic/           # Миграции БД
-│   └── tests/             # Тесты налоговой логики
-├── frontend/
-│   └── src/
-│       ├── api/           # HTTP-клиенты
-│       ├── components/    # React-компоненты
-│       ├── pages/         # Страницы
-│       ├── store/         # Zustand-стор
-│       ├── types/         # TypeScript-типы
-│       └── utils/         # Утилиты (taxCalc)
-├── docker-compose.yml
-└── .env.example
-```
-
-## Налоговая логика
-
-Реализована в `backend/app/core/tax_logic.py` и продублирована на клиенте в `frontend/src/utils/taxCalc.ts`.
-
-| Тип | Метод |
-|-----|-------|
-| СЗ, ИП | Изнутри: `rate / (100 - %) * %` |
-| НДС | Сверху: `base * % / 100` |
-| ИП+НДС | ИП изнутри → НДС сверху |
-| ФЛ | НДФЛ изнутри + Страховые сверху на брутто |
-
-## API
-
-Swagger UI: http://localhost:8000/docs
+**URL:** https://finance.yomimovie.art

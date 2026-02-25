@@ -1,56 +1,49 @@
-import type { TaxType, UnitType } from '@/types'
+/**
+ * Конфигурация колонок Handsontable для бюджетной таблицы.
+ */
+import type { ColumnSettings } from 'handsontable/settings'
 
-export const UNIT_TYPES: UnitType[] = [
-  'Смена', 'Месяц', 'Неделя', 'День', 'Час',
-  'Шт', 'Км', 'Аккорд', 'Серия', 'Ролик', 'Номер/ночь',
-]
-
-export const TAX_TYPES: TaxType[] = ['СЗ', 'ИП', 'НДС', 'ИП+НДС', 'ФЛ', 'Без налога']
-
-export const DEFAULT_TAX_RATES: Record<TaxType, [number, number]> = {
-  'СЗ': [6, 0],
-  'ИП': [6, 0],
-  'НДС': [20, 0],
-  'ИП+НДС': [6, 20],
-  'ФЛ': [13, 30],
-  'Без налога': [0, 0],
+export interface ColumnDef {
+  key: string
+  title: string
+  width: number
+  readOnly?: boolean
+  numericFormat?: { pattern: string; culture: string }
+  type?: string
 }
 
-// Column key → display label mapping
-export const COLUMN_DEFS = [
-  // Fixed (frozen) columns
-  { key: 'category',      label: 'Категория',         width: 160, readOnly: true },
-  { key: 'subcategory',   label: 'Подкатегория',      width: 140, readOnly: true },
-  { key: 'name',          label: 'Наименование',      width: 200 },
-  // Editable data columns
-  { key: 'contractor',    label: 'Контрагент',        width: 160 },
-  { key: 'unit_type',     label: 'Ед. изм.',          width: 100, type: 'dropdown', source: UNIT_TYPES },
-  { key: 'rate',          label: 'Ставка',            width: 100, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'qty_plan',      label: 'Кол-во план',       width: 90,  type: 'numeric' },
-  { key: 'qty_fact',      label: 'Кол-во факт',       width: 90,  type: 'numeric' },
-  { key: 'date_start',    label: 'Дата начала',       width: 110, type: 'date', dateFormat: 'DD.MM.YYYY' },
-  { key: 'date_end',      label: 'Дата окончания',    width: 110, type: 'date', dateFormat: 'DD.MM.YYYY' },
-  { key: 'tax_type',      label: 'Тип налога',        width: 110, type: 'dropdown', source: TAX_TYPES },
-  { key: 'tax_rate_1',    label: 'Ставка налога 1, %',width: 110, type: 'numeric' },
-  { key: 'tax_rate_2',    label: 'Ставка налога 2, %',width: 110, type: 'numeric' },
-  { key: 'ot_rate',       label: 'Ставка ОТ (руб/ч)', width: 110, type: 'numeric' },
-  { key: 'ot_hours_plan', label: 'Часов ОТ план',     width: 90,  type: 'numeric' },
-  { key: 'ot_shifts_plan',label: 'Смен ОТ план',      width: 90,  type: 'numeric' },
-  { key: 'ot_hours_fact', label: 'Часов ОТ факт',     width: 90,  type: 'numeric' },
-  { key: 'ot_shifts_fact',label: 'Смен ОТ факт',      width: 90,  type: 'numeric' },
-  // Calculated columns (readOnly)
-  { key: 'calc_plan_gross',   label: 'Итого план (база)',    width: 130, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'calc_plan_tax',     label: 'Налог план',           width: 110, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'calc_plan_total',   label: 'Итого план (с нал.)',  width: 140, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'calc_fact_gross',   label: 'Итого факт (база)',    width: 130, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'calc_fact_tax',     label: 'Налог факт',           width: 110, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'calc_fact_total',   label: 'Итого факт (с нал.)', width: 140, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'limit_amount',      label: 'Лимит',                width: 120, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'budget_limit_pct',  label: 'Бюджет/Лимит %',      width: 120, readOnly: true },
-  { key: 'limit_fact_pct',    label: 'Лимит/Факт %',        width: 120, readOnly: true },
-  { key: 'paid',              label: 'Оплачено',             width: 110, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'remainder',         label: 'Остаток к оплате',     width: 140, readOnly: true, type: 'numeric', numericFormat: { pattern: '0,0', culture: 'ru-RU' } },
-  { key: 'note',              label: 'Примечание',           width: 200 },
+// Основные колонки (всегда видны)
+export const MAIN_COLUMNS: ColumnDef[] = [
+  { key: 'name', title: 'Статья', width: 300 },
+  { key: 'unit', title: 'Ед.изм.', width: 70 },
+  { key: 'quantity_units', title: 'Кол-во ед.', width: 85, type: 'numeric' },
+  { key: 'rate', title: 'Ставка', width: 100, type: 'numeric' },
+  { key: 'quantity', title: 'Кол-во', width: 80, type: 'numeric' },
+  { key: 'subtotal', title: 'Итого нетто', width: 110, readOnly: true, type: 'numeric' },
+  { key: 'tax_amount', title: 'Налог', width: 90, readOnly: true, type: 'numeric' },
+  { key: 'total', title: 'Итого брутто', width: 110, readOnly: true, type: 'numeric' },
 ]
 
-export const FROZEN_COLS = 3 // Категория, Подкатегория, Наименование
+// Дополнительные колонки (переключаемые)
+export const EXTRA_COLUMNS: ColumnDef[] = [
+  { key: 'limit_amount', title: 'Лимит', width: 110, type: 'numeric' },
+  { key: 'accrued', title: 'Начислено', width: 110, readOnly: true, type: 'numeric' },
+  { key: 'paid', title: 'Оплачено', width: 110, readOnly: true, type: 'numeric' },
+  { key: 'closed', title: 'Закрыто', width: 110, readOnly: true, type: 'numeric' },
+  { key: 'advance', title: 'Аванс', width: 100, readOnly: true, type: 'numeric' },
+]
+
+export function buildHotColumns(showExtra: boolean): ColumnSettings[] {
+  const cols = [...MAIN_COLUMNS, ...(showExtra ? EXTRA_COLUMNS : [])]
+  return cols.map((c) => ({
+    data: c.key,
+    readOnly: c.readOnly || false,
+    width: c.width,
+    type: c.type || 'text',
+    numericFormat: c.type === 'numeric' ? { pattern: '0,0', culture: 'ru-RU' } : undefined,
+  }))
+}
+
+export function buildHotHeaders(showExtra: boolean): string[] {
+  return [...MAIN_COLUMNS, ...(showExtra ? EXTRA_COLUMNS : [])].map((c) => c.title)
+}

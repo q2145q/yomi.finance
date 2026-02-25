@@ -1,30 +1,50 @@
+import uuid
+from datetime import datetime
 from pydantic import BaseModel, EmailStr
-
-from app.models.user import UserRole
 
 
 class UserCreate(BaseModel):
     email: EmailStr
-    name: str
     password: str
-    role: UserRole = UserRole.viewer
+    full_name: str
 
 
-class UserRead(BaseModel):
-    id: int
+class UserOut(BaseModel):
+    id: uuid.UUID
     email: str
-    name: str
-    role: UserRole
+    full_name: str
+    is_active: bool
+    is_superadmin: bool
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class TokenResponse(BaseModel):
+class TokenPair(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
-    user: UserRead
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class ProjectUserOut(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    user_id: uuid.UUID
+    role: str
+    user: UserOut
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectUserCreate(BaseModel):
+    user_id: uuid.UUID
+    role: str

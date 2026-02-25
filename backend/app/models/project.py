@@ -1,47 +1,31 @@
-import enum
-from datetime import date, datetime
+import uuid
+from datetime import datetime, timezone
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import String, DateTime, Enum as SAEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.database import Base
-
-
-class Currency(str, enum.Enum):
-    RUB = "RUB"
-    USD = "USD"
-    EUR = "EUR"
 
 
 class Project(Base):
     __tablename__ = "projects"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(500), nullable=False)
-    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    currency: Mapped[Currency] = mapped_column(Enum(Currency), default=Currency.RUB)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
-
-    params: Mapped[list["ProjectParam"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    currency_primary: Mapped[str] = mapped_column(String(10), default="RUB")
+    currencies_allowed: Mapped[list] = mapped_column(JSON, default=list)
+    exchange_rate_mode: Mapped[str] = mapped_column(
+        SAEnum("CBR_ON_DATE", "FIXED", name="exchange_rate_mode"),
+        default="CBR_ON_DATE",
     )
-    categories: Mapped[list["BudgetCategory"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan", order_by="BudgetCategory.order_index"
+    exchange_rate_fixed: Mapped[float | None] = mapped_column(default=None)
+    status: Mapped[str] = mapped_column(
+        SAEnum("PREP", "PRODUCTION", "POST", "CLOSED", name="project_status"),
+        default="PREP",
     )
-    user_links: Mapped[list["ProjectUser"]] = relationship(back_populates="project")
-    limits: Mapped[list["BudgetLimit"]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-
-class ProjectParam(Base):
-    """Ключ-значение параметров проекта."""
-    __tablename__ = "project_params"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    key: Mapped[str] = mapped_column(String(100), nullable=False)
-    value: Mapped[str] = mapped_column(String(500), nullable=False)
-
-    project: Mapped["Project"] = relationship(back_populates="params")
+    # Связи
+    project_users: Mapped[list["ProjectUser"]] = relationship("ProjectUser", back_populates="project", cascade="all, delete-orphan")
+    budget_lines: Mapped[list["BudgetLine"]] = relationship("BudgetLine", back_populates="project", cascade="all, delete-orphan")

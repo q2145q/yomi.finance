@@ -1,16 +1,12 @@
-import api from './client'
-import type { User } from '@/types'
-
-interface TokenResponse {
-  access_token: string
-  token_type: string
-  user: User
-}
+import client from './client'
+import type { TokenPair, User } from '../types'
 
 export const authApi = {
   login: (email: string, password: string) =>
-    api.post<TokenResponse>('/auth/login', { email, password }).then((r) => r.data),
+    client.post<TokenPair>('/auth/login', { email, password }).then((r) => r.data),
 
-  register: (data: { email: string; name: string; password: string }) =>
-    api.post<User>('/auth/register', data).then((r) => r.data),
+  refresh: (refresh_token: string) =>
+    client.post<TokenPair>('/auth/refresh', { refresh_token }).then((r) => r.data),
+
+  me: () => client.get<User>('/auth/me').then((r) => r.data),
 }

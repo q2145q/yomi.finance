@@ -1,105 +1,107 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { projectsApi } from '@/api/projects'
-import type { Project } from '@/types'
-import toast from 'react-hot-toast'
-import { Plus, FolderOpen, Trash2 } from 'lucide-react'
+import { projectsApi } from '../api/projects'
+import { AppLayout } from '../components/Layout/AppLayout'
+import type { Project } from '../types'
+import { PROJECT_STATUS_LABELS } from '../types'
 
-export default function ProjectsPage() {
+export const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const navigate = useNavigate()
 
-  const load = async () => {
-    try {
-      setProjects(await projectsApi.list())
-    } catch {
-      toast.error('Не удалось загрузить проекты')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    projectsApi.list().then(setProjects).finally(() => setLoading(false))
+  }, [])
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newName.trim()) return
     try {
       const p = await projectsApi.create({ name: newName.trim() })
-      setProjects((prev) => [...prev, p])
+      setProjects((prev) => [p, ...prev])
       setNewName('')
       setCreating(false)
-      toast.success('Проект создан')
     } catch {
-      toast.error('Ошибка создания проекта')
+      alert('Ошибка создания проекта')
     }
   }
-
-  const handleDelete = async (id: number) => {
-    if (!confirm('Удалить проект? Это действие необратимо.')) return
-    try {
-      await projectsApi.delete(id)
-      setProjects((prev) => prev.filter((p) => p.id !== id))
-      toast.success('Проект удалён')
-    } catch {
-      toast.error('Ошибка удаления')
-    }
-  }
-
-  if (loading) return <div className="page-loading">Загрузка...</div>
 
   return (
-    <div className="projects-page">
-      <div className="page-header">
-        <h1>Проекты</h1>
-        <button className="btn-primary" onClick={() => setCreating(true)}>
-          <Plus size={16} /> Новый проект
-        </button>
-      </div>
+    <AppLayout>
+      <div style={{ padding: '28px 32px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 700 }}>Проекты</h1>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            + Новый проект
+          </button>
+        </div>
 
-      {creating && (
-        <form className="create-project-form" onSubmit={handleCreate}>
-          <input
-            autoFocus
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Название проекта"
-          />
-          <button type="submit" className="btn-primary">Создать</button>
-          <button type="button" className="btn-ghost" onClick={() => setCreating(false)}>Отмена</button>
-        </form>
-      )}
-
-      <div className="projects-grid">
-        {projects.map((p) => (
-          <div key={p.id} className="project-card">
-            <div className="project-card-body" onClick={() => navigate(`/projects/${p.id}`)}>
-              <FolderOpen size={32} className="project-icon" />
-              <div className="project-name">{p.name}</div>
-              <div className="project-meta">
-                {p.currency}
-                {p.start_date && ` · ${p.start_date}`}
-              </div>
-            </div>
-            <div className="project-card-actions">
-              <button
-                className="btn-icon danger"
-                onClick={(e) => { e.stopPropagation(); handleDelete(p.id) }}
-                title="Удалить"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
+        {creating && (
+          <div className="card" style={{ marginBottom: 20 }}>
+            <form onSubmit={handleCreate} style={{ display: 'flex', gap: 10 }}>
+              <input
+                className="input"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Название проекта"
+                autoFocus
+              />
+              <button className="btn btn-primary" type="submit">Создать</button>
+              <button className="btn btn-secondary" type="button" onClick={() => setCreating(false)}>Отмена</button>
+            </form>
           </div>
-        ))}
-        {projects.length === 0 && (
-          <p className="empty-state">Нет проектов. Создайте первый!</p>
+        )}
+
+        {loading ? (
+          <div style={{ color: 'var(--color-text-muted)', padding: 40, textAlign: 'center' }}>Загрузка...</div>
+        ) : projects.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 60 }}>
+            <div style={{ color: 'var(--color-text-muted)', marginBottom: 16 }}>У вас пока нет проектов</div>
+            <button className="btn btn-primary" onClick={() => setCreating(true)}>Создать первый проект</button>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+            {projects.map((p) => (
+              <div
+                key={p.id}
+                className="card"
+                style={{ cursor: 'pointer', transition: 'border-color 0.15s' }}
+                onClick={() => navigate(`/projects/${p.id}/budget`)}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--color-border)')}
+              >
+                <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>{p.name}</div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: 11,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: 'var(--color-surface-2)',
+                    color: 'var(--color-text-muted)',
+                  }}>
+                    {PROJECT_STATUS_LABELS[p.status]}
+                  </span>
+                  <span style={{
+                    fontSize: 11,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: 'var(--color-surface-2)',
+                    color: 'var(--color-text-muted)',
+                  }}>
+                    {p.currency_primary}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 10 }}>
+                  {new Date(p.created_at).toLocaleDateString('ru-RU')}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
-    </div>
+    </AppLayout>
   )
 }

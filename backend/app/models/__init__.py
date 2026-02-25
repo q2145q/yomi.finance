@@ -1,14 +1,13 @@
 from app.models.user import User, ProjectUser
-from app.models.project import Project, ProjectParam
-from app.models.budget import BudgetCategory, BudgetSubcategory, BudgetLine, BudgetLimit
+from app.models.project import Project
+from app.models.contractor import Contractor
+from app.models.tax import TaxScheme, TaxComponent
+from app.models.budget import BudgetLine
 
 __all__ = [
-    "User",
-    "ProjectUser",
+    "User", "ProjectUser",
     "Project",
-    "ProjectParam",
-    "BudgetCategory",
-    "BudgetSubcategory",
+    "Contractor",
+    "TaxScheme", "TaxComponent",
     "BudgetLine",
-    "BudgetLimit",
 ]

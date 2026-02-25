@@ -1,50 +1,54 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from app.core.security import create_access_token, get_password_hash, verify_password
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import LoginRequest, TokenResponse, UserCreate, UserRead
+from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.schemas.user import LoginRequest, TokenPair, RefreshRequest, UserOut
+from app.routers.deps import CurrentUser
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
-    existing = await db.scalar(select(User).where(User.email == data.email))
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(
-        email=data.email,
-        name=data.name,
-        hashed_password=get_password_hash(data.password),
-        role=data.role,
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
-
-
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenPair)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = await db.scalar(select(User).where(User.email == data.email))
+    result = await db.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": str(user.id)})
-    return TokenResponse(access_token=token, user=UserRead.model_validate(user))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный email или пароль")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Аккаунт заблокирован")
+
+    return TokenPair(
+        access_token=create_access_token(str(user.id)),
+        refresh_token=create_refresh_token(str(user.id)),
+    )
 
 
-@router.post("/token")
-async def token_form(
-    form: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
-):
-    """OAuth2 compatible endpoint for Swagger UI."""
-    user = await db.scalar(select(User).where(User.email == form.username))
-    if not user or not verify_password(form.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}
+@router.post("/refresh", response_model=TokenPair)
+async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    from jose import JWTError
+    try:
+        payload = decode_token(data.refresh_token)
+        if payload.get("type") != "refresh":
+            raise JWTError("wrong type")
+        user_id = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Недействительный refresh token")
+
+    import uuid
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Пользователь не найден")
+
+    return TokenPair(
+        access_token=create_access_token(str(user.id)),
+        refresh_token=create_refresh_token(str(user.id)),
+    )
+
+
+@router.get("/me", response_model=UserOut)
+async def get_me(current_user: CurrentUser):
+    return current_user

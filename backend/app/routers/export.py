@@ -1,131 +1,95 @@
-import io
+"""Роутер для загрузки шаблона бюджета в проект и экспорта в Excel."""
+import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 
-from app.core.tax_logic import calc_line_totals
 from app.database import get_db
-from app.models.budget import BudgetCategory, BudgetLine, BudgetSubcategory
+from app.models.budget import BudgetLine
+from app.models.user import ProjectUser
+from app.core.budget_template import build_flat_lines
+from app.routers.deps import CurrentUser
 
-router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
-
-HEADER_FILL = PatternFill("solid", fgColor="1F3864")
-CATEGORY_FILL = PatternFill("solid", fgColor="2F5496")
-SUBCATEGORY_FILL = PatternFill("solid", fgColor="B4C6E7")
-WHITE_FONT = Font(bold=True, color="FFFFFF")
-DARK_FONT = Font(bold=True)
-
-COLUMNS = [
-    "Категория", "Подкатегория", "Наименование", "Контрагент",
-    "Ед.изм", "Ставка", "Кол-во план", "Кол-во факт",
-    "Итого план (база)", "Налог план", "Итого план (с налогом)",
-    "Итого факт (база)", "Налог факт", "Итого факт (с налогом)",
-    "Лимит", "Бюджет/Лимит %", "Лимит/Факт %",
-    "Оплачено", "Остаток к оплате", "Примечание",
-]
+router = APIRouter(tags=["budget-template"])
 
 
-@router.get("/xlsx")
-async def export_xlsx(project_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(BudgetCategory)
-        .options(
-            selectinload(BudgetCategory.subcategories)
-            .selectinload(BudgetSubcategory.lines)
-            .selectinload(BudgetLine.limit)
+@router.post("/projects/{project_id}/budget/from-template", status_code=201)
+async def load_template(project_id: uuid.UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Загружает стандартный шаблон бюджета в проект (удаляет существующие статьи)."""
+    # Проверяем доступ
+    if not current_user.is_superadmin:
+        pu_result = await db.execute(
+            select(ProjectUser).where(ProjectUser.project_id == project_id, ProjectUser.user_id == current_user.id)
         )
-        .where(BudgetCategory.project_id == project_id)
-        .order_by(BudgetCategory.order_index)
+        pu = pu_result.scalar_one_or_none()
+        if not pu or pu.role not in ("PRODUCER", "LINE_PRODUCER"):
+            raise HTTPException(status_code=403, detail="Только продюсер может загружать шаблон")
+
+    # Удаляем существующие статьи
+    await db.execute(delete(BudgetLine).where(BudgetLine.project_id == project_id))
+
+    # Генерируем плоский список из шаблона
+    lines_data = build_flat_lines(project_id=project_id)
+
+    # Bulk insert
+    lines = [BudgetLine(**d) for d in lines_data]
+    db.add_all(lines)
+    await db.commit()
+
+    return {"message": f"Загружено {len(lines)} статей бюджета", "count": len(lines)}
+
+
+@router.get("/projects/{project_id}/budget/export")
+async def export_budget_excel(project_id: uuid.UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Экспорт бюджета в Excel."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        import io
+    except ImportError:
+        raise HTTPException(status_code=500, detail="openpyxl не установлен")
+
+    lines_result = await db.execute(
+        select(BudgetLine).where(BudgetLine.project_id == project_id).order_by(BudgetLine.sort_order)
     )
-    categories = result.scalars().all()
+    lines = list(lines_result.scalars().all())
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Бюджет"
 
-    # Header row
-    ws.append(COLUMNS)
-    for cell in ws[1]:
-        cell.fill = HEADER_FILL
-        cell.font = WHITE_FONT
-        cell.alignment = Alignment(horizontal="center", wrap_text=True)
+    # Заголовки
+    headers = ["Код", "Статья", "Ед.изм.", "Кол-во ед.", "Ставка", "Кол-во", "Итого нетто", "Лимит"]
+    for col, h in enumerate(headers, 1):
+        ws.cell(row=1, column=col, value=h).font = Font(bold=True)
 
-    for cat in sorted(categories, key=lambda c: c.order_index):
-        cat_row = [cat.name] + [""] * (len(COLUMNS) - 1)
-        ws.append(cat_row)
-        for cell in ws[ws.max_row]:
-            cell.fill = CATEGORY_FILL
-            cell.font = WHITE_FONT
+    # Данные
+    for row, line in enumerate(lines, 2):
+        indent = "  " * line.level
+        ws.cell(row=row, column=1, value=line.code)
+        ws.cell(row=row, column=2, value=indent + line.name)
+        ws.cell(row=row, column=3, value=line.unit)
+        ws.cell(row=row, column=4, value=line.quantity_units)
+        ws.cell(row=row, column=5, value=line.rate)
+        ws.cell(row=row, column=6, value=line.quantity)
+        ws.cell(row=row, column=7, value=line.rate * line.quantity)
+        ws.cell(row=row, column=8, value=line.limit_amount)
 
-        for sub in sorted(cat.subcategories, key=lambda s: s.order_index):
-            sub_row = ["", sub.name] + [""] * (len(COLUMNS) - 2)
-            ws.append(sub_row)
-            for cell in ws[ws.max_row]:
-                cell.fill = SUBCATEGORY_FILL
-                cell.font = DARK_FONT
-
-            for line in sorted(sub.lines, key=lambda l: l.order_index):
-                calc = calc_line_totals(
-                    rate=line.rate,
-                    qty_plan=line.qty_plan,
-                    qty_fact=line.qty_fact,
-                    unit_type=line.unit_type.value,
-                    tax_type=line.tax_type.value,
-                    tax_rate_1=line.tax_rate_1,
-                    tax_rate_2=line.tax_rate_2,
-                    ot_rate=line.ot_rate,
-                    ot_hours_plan=line.ot_hours_plan,
-                    ot_shifts_plan=line.ot_shifts_plan,
-                    ot_hours_fact=line.ot_hours_fact,
-                    ot_shifts_fact=line.ot_shifts_fact,
-                )
-                limit_amt = line.limit.amount if line.limit else None
-                budget_limit_pct = (
-                    (calc["plan_total"] / limit_amt - 1) * 100 if limit_amt else None
-                )
-                limit_fact_pct = (
-                    (calc["fact_total"] / limit_amt - 1) * 100 if limit_amt else None
-                )
-                ws.append([
-                    cat.name,
-                    sub.name,
-                    line.name,
-                    line.contractor or "",
-                    line.unit_type.value,
-                    line.rate,
-                    line.qty_plan,
-                    line.qty_fact,
-                    calc["plan_net"],
-                    calc["plan_tax_1"] + calc["plan_tax_2"],
-                    calc["plan_total"],
-                    calc["fact_net"],
-                    calc["fact_tax_1"] + calc["fact_tax_2"],
-                    calc["fact_total"],
-                    limit_amt or "",
-                    f"{budget_limit_pct:.1f}%" if budget_limit_pct is not None else "",
-                    f"{limit_fact_pct:.1f}%" if limit_fact_pct is not None else "",
-                    line.paid,
-                    calc["fact_total"] - line.paid,
-                    line.note or "",
-                ])
-
-    # Auto-width columns
-    for col in ws.columns:
-        max_len = max((len(str(c.value or "")) for c in col), default=0)
-        ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+        if line.level == 0:
+            for col in range(1, 9):
+                ws.cell(row=row, column=col).font = Font(bold=True)
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    filename = f"budget_{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+    filename = f"budget_{project_id}_{datetime.now().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

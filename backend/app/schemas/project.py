@@ -1,41 +1,35 @@
-from datetime import date
-from typing import Optional
-
+import uuid
+from datetime import datetime
 from pydantic import BaseModel
-
-from app.models.project import Currency
-
-
-class ProjectParamRead(BaseModel):
-    key: str
-    value: str
-
-    model_config = {"from_attributes": True}
+from typing import Optional
 
 
 class ProjectCreate(BaseModel):
     name: str
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
-    currency: Currency = Currency.RUB
-    # Параметры (ключ → значение)
-    params: dict[str, str] = {}
+    currency_primary: str = "RUB"
+    currencies_allowed: list[str] = []
+    exchange_rate_mode: str = "CBR_ON_DATE"
+    exchange_rate_fixed: Optional[float] = None
+    status: str = "PREP"
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
-    currency: Optional[Currency] = None
-    params: Optional[dict[str, str]] = None
+    currency_primary: Optional[str] = None
+    currencies_allowed: Optional[list[str]] = None
+    exchange_rate_mode: Optional[str] = None
+    exchange_rate_fixed: Optional[float] = None
+    status: Optional[str] = None
 
 
-class ProjectRead(BaseModel):
-    id: int
+class ProjectOut(BaseModel):
+    id: uuid.UUID
     name: str
-    start_date: Optional[date]
-    end_date: Optional[date]
-    currency: Currency
-    params: list[ProjectParamRead] = []
+    currency_primary: str
+    currencies_allowed: list[str]
+    exchange_rate_mode: str
+    exchange_rate_fixed: Optional[float]
+    status: str
+    created_at: datetime
 
     model_config = {"from_attributes": True}

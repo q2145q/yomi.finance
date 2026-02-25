@@ -1,18 +1,15 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: yomi_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: yomi
-      POSTGRES_PASSWORD: yomipass
-      POSTGRES_DB: yomifinance
+      POSTGRES_DB: ${POSTGRES_DB:-yomifinance}
+      POSTGRES_USER: ${POSTGRES_USER:-yomi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-yomipass}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U yomi -d yomifinance"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yomi} -d ${POSTGRES_DB:-yomifinance}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,30 +17,28 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: yomi_backend
+      dockerfile: Dockerfile
     restart: unless-stopped
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://yomi:yomipass@db:5432/yomifinance
-      SECRET_KEY: change-me-in-production
-    ports:
-      - "8000:8000"
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-yomi}:${POSTGRES_PASSWORD:-yomipass}@db:5432/${POSTGRES_DB:-yomifinance}
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      - uploads:/app/uploads
 
   frontend:
     build:
       context: ./frontend
-    container_name: yomi_frontend
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "4000:80"
+      - "3000:80"
     depends_on:
       - backend
 
 volumes:
-  postgres_data:
+  pgdata:
+  uploads:

@@ -1,104 +1,224 @@
-import { useRef, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import Handsontable from 'handsontable'
-import { HotTable, HotTableClass } from '@handsontable/react'
+import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
-import 'handsontable/dist/handsontable.full.min.css'
+import 'handsontable/dist/handsontable.full.css'
 
-import type { BudgetCategory } from '@/types'
+import type { BudgetLine } from '../../types'
 import { buildTableData } from './dataAdapter'
-import { COLUMN_DEFS, FROZEN_COLS } from './columns'
-import { budgetApi } from '@/api/budget'
-import toast from 'react-hot-toast'
+import type { FlatRow } from './dataAdapter'
+import { buildHotColumns, buildHotHeaders } from './columns'
+import { budgetApi } from '../../api/budget'
 
 registerAllModules()
 
 interface Props {
-  projectId: number
-  categories: BudgetCategory[]
-  onRefresh: () => void
+  projectId: string
+  tree: BudgetLine[]
+  onUpdate: () => void
 }
 
-const EDITABLE_KEYS = new Set([
-  'name', 'contractor', 'unit_type', 'rate', 'qty_plan', 'qty_fact',
-  'date_start', 'date_end', 'tax_type', 'tax_rate_1', 'tax_rate_2',
-  'ot_rate', 'ot_hours_plan', 'ot_shifts_plan', 'ot_hours_fact', 'ot_shifts_fact',
-  'paid', 'note',
-])
+export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
+  const hotRef = useRef<any>(null)
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+  const [showExtra, setShowExtra] = useState(false)
+  const [flatData, setFlatData] = useState<FlatRow[]>([])
+  const [saving, setSaving] = useState(false)
 
-const COL_KEYS = COLUMN_DEFS.map((c) => c.key)
+  // Пересчитываем плоский список при изменении дерева или раскрытых групп
+  useEffect(() => {
+    setFlatData(buildTableData(tree, collapsedIds))
+  }, [tree, collapsedIds])
 
-export default function BudgetTable({ projectId, categories, onRefresh }: Props) {
-  const hotRef = useRef<HotTableClass>(null)
+  const toggleCollapse = useCallback((id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
-  const tableData = buildTableData(categories)
+  // Клик по стрелке в ячейке name (toggle collapse)
+  const handleCellClick = useCallback(
+    (row: number, col: number, _: HTMLElement) => {
+      if (col !== 0) return
+      const rowData = flatData[row]
+      if (rowData?._hasChildren) {
+        toggleCollapse(rowData._id)
+      }
+    },
+    [flatData, toggleCollapse]
+  )
 
-  const getData = () => tableData.map((row) => COL_KEYS.map((k) => (row as unknown as Record<string, unknown>)[k] ?? ''))
-
-  const columns: Handsontable.ColumnSettings[] = COLUMN_DEFS.map((def) => {
-    const col: Handsontable.ColumnSettings = {
-      data: COL_KEYS.indexOf(def.key),
-      title: def.label,
-      width: def.width,
-      readOnly: !!def.readOnly,
-    }
-    if (def.type) col.type = def.type as string
-    if ('source' in def) col.source = def.source as string[]
-    if ('numericFormat' in def) col.numericFormat = def.numericFormat
-    if ('dateFormat' in def) col.dateFormat = def.dateFormat as string
-    return col
-  })
-
+  // Сохранение изменённой ячейки
   const handleAfterChange = useCallback(
-    async (changes: Handsontable.CellChange[] | null) => {
-      if (!changes) return
-      for (const [rowIdx, colIdx, , newVal] of changes) {
-        const row = tableData[rowIdx]
-        if (!row || row.rowType !== 'line' || !row.lineId) continue
-        const colKey = COL_KEYS[colIdx as number]
-        if (!EDITABLE_KEYS.has(colKey)) continue
+    async (changes: Handsontable.CellChange[] | null, source: string) => {
+      if (!changes || source === 'loadData') return
+
+      for (const [row, prop, , newVal] of changes) {
+        const rowData = flatData[row]
+        if (!rowData || rowData._type === 'GROUP') continue
+
+        setSaving(true)
         try {
-          await budgetApi.updateLine(projectId, row.lineId, { [colKey]: newVal })
-          onRefresh()
+          await budgetApi.updateLine(rowData._id, { [prop as string]: newVal })
+          onUpdate()
         } catch {
-          toast.error(`Ошибка сохранения: ${colKey}`)
+          // TODO: показать ошибку
+        } finally {
+          setSaving(false)
         }
       }
     },
-    [projectId, tableData, onRefresh]
+    [flatData, onUpdate]
   )
 
-  const cells = (row: number): Handsontable.CellMeta => {
-    const r = tableData[row]
-    if (!r) return {}
-    if (r.rowType === 'category') return { readOnly: true, className: 'row-category' }
-    if (r.rowType === 'subcategory') return { readOnly: true, className: 'row-subcategory' }
-    return {}
-  }
+  const rowClassNames = flatData.map((row) => {
+    if (row._level === 0) return 'row-category'
+    if (row._level === 1) return 'row-subcategory'
+    return ''
+  })
+
+  // Рендер кнопки expand/collapse в ячейке name
+  const nameRenderer = useCallback(
+    (instance: Handsontable, td: HTMLTableCellElement, row: number, col: number) => {
+      const rowData = flatData[row]
+      if (!rowData) return
+
+      const indent = rowData._level * 16
+      td.innerHTML = ''
+      td.style.paddingLeft = `${indent + 8}px`
+
+      if (rowData._hasChildren) {
+        const arrow = document.createElement('span')
+        arrow.textContent = rowData._expanded ? '▼ ' : '▶ '
+        arrow.style.cursor = 'pointer'
+        arrow.style.color = 'var(--color-text-muted)'
+        arrow.style.fontSize = '10px'
+        arrow.style.marginRight = '4px'
+        arrow.addEventListener('mousedown', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          toggleCollapse(rowData._id)
+        })
+        td.appendChild(arrow)
+      }
+
+      const text = document.createTextNode(rowData.name)
+      td.appendChild(text)
+
+      if (rowData._level === 0) {
+        td.style.fontWeight = '700'
+      } else if (rowData._level === 1) {
+        td.style.fontWeight = '600'
+      }
+    },
+    [flatData, toggleCollapse]
+  )
+
+  const numRenderer = useCallback(
+    (instance: Handsontable, td: HTMLTableCellElement, row: number, col: number, prop: string) => {
+      const rowData = flatData[row]
+      if (!rowData) return
+      const val = (rowData as any)[prop as string]
+      if (!val || val === 0) {
+        td.textContent = ''
+      } else {
+        td.textContent = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(val)
+        td.style.textAlign = 'right'
+        td.style.fontFamily = 'var(--font-mono)'
+      }
+    },
+    [flatData]
+  )
+
+  const columns = buildHotColumns(showExtra)
 
   return (
-    <div className="budget-table-wrapper">
-      <HotTable
-        ref={hotRef}
-        data={getData()}
-        columns={columns}
-        rowHeaders={false}
-        colHeaders={true}
-        fixedColumnsLeft={FROZEN_COLS}
-        contextMenu={true}
-        manualColumnResize={true}
-        manualRowMove={true}
-        multiColumnSorting={false}
-        search={true}
-        copyPaste={true}
-        undo={true}
-        afterChange={handleAfterChange}
-        cells={(row) => cells(row)}
-        height="calc(100vh - 140px)"
-        width="100%"
-        stretchH="none"
-        licenseKey="non-commercial-and-evaluation"
-        language="ru-PL"
-      />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Тулбар */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 16px',
+        background: 'var(--color-surface)',
+        borderBottom: '1px solid var(--color-border)',
+        flexShrink: 0,
+      }}>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => budgetApi.loadTemplate(projectId).then(onUpdate)}
+        >
+          Загрузить шаблон
+        </button>
+        <button
+          className={`btn btn-sm ${showExtra ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setShowExtra((v) => !v)}
+        >
+          {showExtra ? 'Скрыть финансы' : 'Показать финансы'}
+        </button>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => budgetApi.exportExcel(projectId).then((r) => {
+            const url = URL.createObjectURL(r.data)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `budget.xlsx`
+            a.click()
+          })}
+        >
+          Экспорт xlsx
+        </button>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => setCollapsedIds(new Set())}
+        >
+          Развернуть всё
+        </button>
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => {
+            const topLevel = new Set(tree.map((l) => l.id))
+            setCollapsedIds(topLevel)
+          }}
+        >
+          Свернуть всё
+        </button>
+        {saving && <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Сохранение...</span>}
+      </div>
+
+      {/* Таблица */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <HotTable
+          ref={hotRef}
+          data={flatData}
+          columns={columns}
+          colHeaders={buildHotHeaders(showExtra)}
+          rowHeaders={false}
+          fixedColumnsStart={1}
+          licenseKey="non-commercial-and-evaluation"
+          height="100%"
+          stretchH="none"
+          manualColumnResize
+          outsideClickDeselects={false}
+          enterMoves={{ row: 1, col: 0 }}
+          tabMoves={{ row: 0, col: 1 }}
+          cells={(row) => {
+            const rowData = flatData[row]
+            if (!rowData) return {}
+            return {
+              className: rowClassNames[row] || '',
+              readOnly: rowData._type === 'GROUP',
+            }
+          }}
+          afterChange={handleAfterChange}
+          afterOnCellMouseDown={(e, coords) => {
+            handleCellClick(coords.row, coords.col, e.target as HTMLElement)
+          }}
+        />
+      </div>
     </div>
   )
 }
