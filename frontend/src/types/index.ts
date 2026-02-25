@@ -116,6 +116,8 @@ export interface BudgetLine {
   rate: number
   quantity: number
   tax_scheme_id: string | null
+  contractor_id: string | null
+  contractor_name: string | null
   tax_override: boolean
   currency: string
   limit_amount: number

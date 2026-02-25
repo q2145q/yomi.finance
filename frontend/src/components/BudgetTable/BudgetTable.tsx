@@ -4,12 +4,13 @@ import { HotTable } from '@handsontable/react'
 import { registerAllModules } from 'handsontable/registry'
 import 'handsontable/dist/handsontable.full.css'
 
-import type { BudgetLine, TaxScheme } from '../../types'
+import type { BudgetLine, TaxScheme, Contractor } from '../../types'
 import { buildTableData } from './dataAdapter'
 import type { FlatRow } from './dataAdapter'
 import { buildHotColumns, buildHotHeaders } from './columns'
 import { budgetApi } from '../../api/budget'
 import { taxSchemesApi } from '../../api/taxSchemes'
+import { contractorsApi } from '../../api/contractors'
 
 registerAllModules()
 
@@ -26,15 +27,17 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
   const [flatData, setFlatData] = useState<FlatRow[]>([])
   const [saving, setSaving] = useState(false)
   const [taxSchemes, setTaxSchemes] = useState<TaxScheme[]>([])
+  const [contractors, setContractors] = useState<Contractor[]>([])
   const [selectedRow, setSelectedRow] = useState<FlatRow | null>(null)
   const [adding, setAdding] = useState(false)
 
-  // Загружаем налоговые схемы один раз
+  // Загружаем справочники один раз
   useEffect(() => {
     taxSchemesApi.list().then(setTaxSchemes).catch(() => {})
+    contractorsApi.list().then(setContractors).catch(() => {})
   }, [])
 
-  // Карта id→name и name→id для налоговых схем
+  // Карты id→name для схем и контрагентов
   const taxSchemeIdToName = useCallback(
     (id: string | null) => taxSchemes.find((s) => s.id === id)?.name || '',
     [taxSchemes],
@@ -43,15 +46,23 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
     (name: string) => taxSchemes.find((s) => s.name === name)?.id || null,
     [taxSchemes],
   )
+  const contractorNameToId = useCallback(
+    (name: string) => contractors.find((c) => c.full_name === name)?.id || null,
+    [contractors],
+  )
 
-  // Пересчитываем плоский список при изменении дерева, групп или схем
+  // Пересчитываем плоский список при изменении дерева, групп или справочников
   useEffect(() => {
     const rows = buildTableData(tree, collapsedIds)
     rows.forEach((r) => {
       r.tax_scheme_name = taxSchemeIdToName(r.tax_scheme_id)
+      // contractor_name уже приходит с бэкенда, но если пусто — ищем локально
+      if (!r.contractor_name && r.contractor_id) {
+        r.contractor_name = contractors.find((c) => c.id === r.contractor_id)?.full_name || ''
+      }
     })
     setFlatData(rows)
-  }, [tree, collapsedIds, taxSchemeIdToName])
+  }, [tree, collapsedIds, taxSchemeIdToName, contractors])
 
   const toggleCollapse = useCallback((id: string) => {
     setCollapsedIds((prev) => {
@@ -84,6 +95,8 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
           let patchData: Record<string, unknown>
           if (prop === 'tax_scheme_name') {
             patchData = { tax_scheme_id: taxSchemeNameToId(newVal as string) }
+          } else if (prop === 'contractor_name') {
+            patchData = { contractor_id: contractorNameToId(newVal as string) }
           } else {
             patchData = { [prop as string]: newVal }
           }
@@ -96,7 +109,7 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
         }
       }
     },
-    [flatData, onUpdate, taxSchemeNameToId],
+    [flatData, onUpdate, taxSchemeNameToId, contractorNameToId],
   )
 
   // Добавление строк
@@ -114,7 +127,6 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
             sort_order: 9999,
           } as Partial<BudgetLine>)
         } else if (type === 'subcategory') {
-          // Родитель — ближайшая категория (level 0) от выбранной строки
           let parentId: string | null = null
           if (selectedRow?._level === 0) parentId = selectedRow._id
           else if (selectedRow?._parentId) {
@@ -130,7 +142,6 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
             sort_order: 9999,
           } as Partial<BudgetLine>)
         } else if (type === 'item') {
-          // Родитель — ближайшая группа (level 0 или 1)
           let parentId: string | null = null
           let level = 2
           if (selectedRow?._type === 'GROUP') {
@@ -214,23 +225,10 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
     [flatData, toggleCollapse],
   )
 
-  const numRenderer = useCallback(
-    (_instance: Handsontable, td: HTMLTableCellElement, _row: number, _col: number, prop: string, value: unknown) => {
-      if (!value || value === 0) {
-        td.textContent = ''
-      } else {
-        td.textContent = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(value as number)
-        td.style.textAlign = 'right'
-        td.style.fontFamily = 'var(--font-mono)'
-      }
-    },
-    [],
-  )
-
   const taxSchemeNames = taxSchemes.map((s) => s.name)
-  const columns = buildHotColumns(showExtra, taxSchemeNames)
+  const contractorNames = contractors.map((c) => c.full_name)
+  const columns = buildHotColumns(showExtra, taxSchemeNames, contractorNames)
 
-  // Определяем доступность кнопок добавления
   const canAddSub = !!selectedRow && (selectedRow._level === 0 || !!selectedRow._parentId)
   const canAddItem = !!selectedRow
   const canDelete = !!selectedRow

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
 import { AppLayout } from '../components/Layout/AppLayout'
 import { contractorsApi } from '../api/contractors'
-import type { Contractor, ContractorType } from '../types'
+import { taxSchemesApi } from '../api/taxSchemes'
+import type { Contractor, ContractorType, TaxScheme } from '../types'
 import { CONTRACTOR_TYPE_LABELS } from '../types'
 
 const EMPTY_FORM = {
@@ -11,38 +12,79 @@ const EMPTY_FORM = {
   phone: '',
   email: '',
   currency: 'RUB',
+  tax_scheme_id: '',
+  telegram_id: '',
+}
+
+type FormData = typeof EMPTY_FORM
+
+function contractorToForm(c: Contractor): FormData {
+  return {
+    full_name: c.full_name,
+    type: c.type,
+    inn: c.inn || '',
+    phone: c.phone || '',
+    email: c.email || '',
+    currency: c.currency,
+    tax_scheme_id: c.tax_scheme_id || '',
+    telegram_id: c.telegram_id || '',
+  }
 }
 
 export const ContractorsPage: React.FC = () => {
   const [contractors, setContractors] = useState<Contractor[]>([])
+  const [taxSchemes, setTaxSchemes] = useState<TaxScheme[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<FormData>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
 
   const load = () => {
     setLoading(true)
-    contractorsApi.list().then(setContractors).finally(() => setLoading(false))
+    Promise.all([contractorsApi.list(), taxSchemesApi.list()])
+      .then(([c, t]) => { setContractors(c); setTaxSchemes(t) })
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [])
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const openCreate = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setShowForm(true)
+  }
+
+  const openEdit = (c: Contractor) => {
+    setEditingId(c.id)
+    setForm(contractorToForm(c))
+    setShowForm(true)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
+    const data = {
+      ...form,
+      inn: form.inn || null,
+      phone: form.phone || null,
+      email: form.email || null,
+      telegram_id: form.telegram_id || null,
+      tax_scheme_id: form.tax_scheme_id || null,
+    }
     try {
-      await contractorsApi.create({
-        ...form,
-        inn: form.inn || null,
-        phone: form.phone || null,
-        email: form.email || null,
-      })
-      setForm(EMPTY_FORM)
+      if (editingId) {
+        await contractorsApi.update(editingId, data as any)
+      } else {
+        await contractorsApi.create(data as any)
+      }
       setShowForm(false)
+      setEditingId(null)
+      setForm(EMPTY_FORM)
       load()
     } catch {
-      alert('Ошибка создания контрагента')
+      alert(editingId ? 'Ошибка обновления' : 'Ошибка создания контрагента')
     } finally {
       setSaving(false)
     }
@@ -58,7 +100,7 @@ export const ContractorsPage: React.FC = () => {
       <div style={{ padding: '28px 32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700 }}>Контрагенты</h1>
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}>+ Добавить</button>
+          <button className="btn btn-primary" onClick={openCreate}>+ Добавить</button>
         </div>
 
         <input
@@ -69,10 +111,13 @@ export const ContractorsPage: React.FC = () => {
           onChange={(e) => setSearch(e.target.value)}
         />
 
+        {/* Форма создания / редактирования */}
         {showForm && (
           <div className="card" style={{ marginBottom: 20 }}>
-            <div style={{ fontWeight: 600, marginBottom: 14 }}>Новый контрагент</div>
-            <form onSubmit={handleCreate}>
+            <div style={{ fontWeight: 600, marginBottom: 14 }}>
+              {editingId ? 'Редактировать контрагента' : 'Новый контрагент'}
+            </div>
+            <form onSubmit={handleSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                 <div>
                   <label style={labelStyle}>ФИО / Название *</label>
@@ -126,6 +171,28 @@ export const ContractorsPage: React.FC = () => {
                   />
                 </div>
                 <div>
+                  <label style={labelStyle}>Telegram</label>
+                  <input
+                    className="input"
+                    value={form.telegram_id}
+                    onChange={(e) => setForm({ ...form, telegram_id: e.target.value })}
+                    placeholder="@username"
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Налоговая схема</label>
+                  <select
+                    className="input"
+                    value={form.tax_scheme_id}
+                    onChange={(e) => setForm({ ...form, tax_scheme_id: e.target.value })}
+                  >
+                    <option value="">— не выбрана —</option>
+                    {taxSchemes.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label style={labelStyle}>Валюта</label>
                   <select
                     className="input"
@@ -140,9 +207,9 @@ export const ContractorsPage: React.FC = () => {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn btn-primary" type="submit" disabled={saving}>
-                  {saving ? 'Сохранение...' : 'Создать'}
+                  {saving ? 'Сохранение...' : editingId ? 'Сохранить' : 'Создать'}
                 </button>
-                <button className="btn btn-secondary" type="button" onClick={() => { setShowForm(false); setForm(EMPTY_FORM) }}>
+                <button className="btn btn-secondary" type="button" onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) }}>
                   Отмена
                 </button>
               </div>
@@ -157,40 +224,50 @@ export const ContractorsPage: React.FC = () => {
             <div style={{ color: 'var(--color-text-muted)', marginBottom: 16 }}>
               {search ? 'Ничего не найдено' : 'Контрагентов пока нет'}
             </div>
-            {!search && (
-              <button className="btn btn-primary" onClick={() => setShowForm(true)}>Добавить первого</button>
-            )}
+            {!search && <button className="btn btn-primary" onClick={openCreate}>Добавить первого</button>}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-                  {['ФИО / Название', 'Тип', 'ИНН', 'Телефон', 'Email', 'Валюта'].map((h) => (
+                  {['ФИО / Название', 'Тип', 'ИНН', 'Телефон', 'Email', 'Налог. схема', 'Валюта', ''].map((h) => (
                     <th key={h} style={thStyle}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
-                  <tr
-                    key={c.id}
-                    style={{ borderBottom: '1px solid var(--color-border)', cursor: 'default' }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-surface-2)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '')}
-                  >
-                    <td style={tdStyle}>{c.full_name}</td>
-                    <td style={tdStyle}>
-                      <span style={badgeStyle}>{CONTRACTOR_TYPE_LABELS[c.type]}</span>
-                    </td>
-                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
-                      {c.inn || '—'}
-                    </td>
-                    <td style={tdStyle}>{c.phone || '—'}</td>
-                    <td style={tdStyle}>{c.email || '—'}</td>
-                    <td style={tdStyle}>{c.currency}</td>
-                  </tr>
-                ))}
+                {filtered.map((c) => {
+                  const schemeName = taxSchemes.find((s) => s.id === c.tax_scheme_id)?.name
+                  return (
+                    <tr
+                      key={c.id}
+                      style={{ borderBottom: '1px solid var(--color-border)' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-surface-2)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '')}
+                    >
+                      <td style={tdStyle}><strong>{c.full_name}</strong></td>
+                      <td style={tdStyle}>
+                        <span style={badgeStyle}>{CONTRACTOR_TYPE_LABELS[c.type]}</span>
+                      </td>
+                      <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', color: 'var(--color-text-muted)' }}>
+                        {c.inn || '—'}
+                      </td>
+                      <td style={tdStyle}>{c.phone || '—'}</td>
+                      <td style={tdStyle}>{c.email || '—'}</td>
+                      <td style={tdStyle}>{schemeName || '—'}</td>
+                      <td style={tdStyle}>{c.currency}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => openEdit(c)}
+                        >
+                          Изменить
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

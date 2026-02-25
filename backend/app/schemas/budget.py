@@ -13,6 +13,7 @@ class BudgetLineCreate(BaseModel):
     rate: float = 0.0
     quantity: float = 1.0
     tax_scheme_id: Optional[uuid.UUID] = None
+    contractor_id: Optional[uuid.UUID] = None
     currency: str = "RUB"
     sort_order: int = 0
 
@@ -24,6 +25,7 @@ class BudgetLineUpdate(BaseModel):
     rate: Optional[float] = None
     quantity: Optional[float] = None
     tax_scheme_id: Optional[uuid.UUID] = None
+    contractor_id: Optional[uuid.UUID] = None
     tax_override: Optional[bool] = None
     currency: Optional[str] = None
     limit_amount: Optional[float] = None
@@ -44,6 +46,8 @@ class BudgetLineOut(BaseModel):
     rate: float
     quantity: float
     tax_scheme_id: Optional[uuid.UUID]
+    contractor_id: Optional[uuid.UUID] = None
+    contractor_name: Optional[str] = None
     tax_override: bool
     currency: str
     limit_amount: float

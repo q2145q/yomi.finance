@@ -28,6 +28,8 @@ export interface FlatRow {
   advance: number
   tax_scheme_id: string | null
   tax_scheme_name: string
+  contractor_id: string | null
+  contractor_name: string
 }
 
 function flattenTree(
@@ -63,6 +65,8 @@ function flattenTree(
       advance: line.advance,
       tax_scheme_id: line.tax_scheme_id,
       tax_scheme_name: '',
+      contractor_id: line.contractor_id,
+      contractor_name: line.contractor_name || '',
     }
     result.push(row)
 

@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.budget import BudgetLine
 from app.models.user import ProjectUser
 from app.models.tax import TaxScheme
+from app.models.contractor import Contractor
 from app.schemas.budget import BudgetLineCreate, BudgetLineUpdate, BudgetLineOut, BudgetLineMoveRequest
 from app.routers.deps import CurrentUser
 from app.core.tax_logic import calc_tax
@@ -19,8 +20,11 @@ router = APIRouter(prefix="/projects", tags=["budget"])
 lines_router = APIRouter(prefix="/budget/lines", tags=["budget"])
 
 
-def _line_to_out(line: BudgetLine) -> BudgetLineOut:
+def _line_to_out(line: BudgetLine, contractor_map: dict | None = None) -> BudgetLineOut:
     """Создаёт BudgetLineOut из скалярных полей модели (без обращения к lazy-relations)."""
+    contractor_name = None
+    if contractor_map and line.contractor_id:
+        contractor_name = contractor_map.get(line.contractor_id)
     return BudgetLineOut(
         id=line.id,
         project_id=line.project_id,
@@ -35,6 +39,8 @@ def _line_to_out(line: BudgetLine) -> BudgetLineOut:
         rate=line.rate,
         quantity=line.quantity,
         tax_scheme_id=line.tax_scheme_id,
+        contractor_id=line.contractor_id,
+        contractor_name=contractor_name,
         tax_override=line.tax_override,
         currency=line.currency,
         limit_amount=line.limit_amount,
@@ -43,9 +49,9 @@ def _line_to_out(line: BudgetLine) -> BudgetLineOut:
     )
 
 
-def _compute_line(line: BudgetLine, tax_components: list[dict]) -> BudgetLineOut:
+def _compute_line(line: BudgetLine, tax_components: list[dict], contractor_map: dict | None = None) -> BudgetLineOut:
     """Вычисляет subtotal/tax_amount/total для статьи."""
-    out = _line_to_out(line)
+    out = _line_to_out(line, contractor_map)
     if line.type == "GROUP":
         return out
 
@@ -56,7 +62,12 @@ def _compute_line(line: BudgetLine, tax_components: list[dict]) -> BudgetLineOut
     return out
 
 
-def _build_tree(lines: list[BudgetLine], scheme_map: dict, parent_id=None) -> list[BudgetLineOut]:
+def _build_tree(
+    lines: list[BudgetLine],
+    scheme_map: dict,
+    contractor_map: dict,
+    parent_id=None,
+) -> list[BudgetLineOut]:
     """Рекурсивно строит дерево статей бюджета."""
     result = []
     for line in sorted([l for l in lines if l.parent_id == parent_id], key=lambda x: x.sort_order):
@@ -64,8 +75,8 @@ def _build_tree(lines: list[BudgetLine], scheme_map: dict, parent_id=None) -> li
         if line.tax_scheme_id and line.tax_scheme_id in scheme_map:
             components = scheme_map[line.tax_scheme_id]
 
-        out = _compute_line(line, components)
-        out.children = _build_tree(lines, scheme_map, line.id)
+        out = _compute_line(line, components, contractor_map)
+        out.children = _build_tree(lines, scheme_map, contractor_map, line.id)
 
         # Агрегируем итоги для групп
         if line.type == "GROUP" and out.children:
@@ -97,6 +108,19 @@ async def _get_scheme_map(db: AsyncSession, lines: list[BudgetLine]) -> dict:
     return scheme_map
 
 
+async def _get_contractor_map(db: AsyncSession, lines: list[BudgetLine]) -> dict:
+    """Загружает имена контрагентов для статей."""
+    contractor_ids = list({l.contractor_id for l in lines if l.contractor_id})
+    contractor_map = {}
+    if contractor_ids:
+        result = await db.execute(
+            select(Contractor).where(Contractor.id.in_(contractor_ids))
+        )
+        for c in result.scalars().all():
+            contractor_map[c.id] = c.full_name
+    return contractor_map
+
+
 @router.get("/{project_id}/budget", response_model=list[BudgetLineOut])
 async def get_budget(project_id: uuid.UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     """Дерево статей бюджета проекта."""
@@ -112,7 +136,8 @@ async def get_budget(project_id: uuid.UUID, current_user: CurrentUser, db: Async
     )
     lines = list(lines_result.scalars().all())
     scheme_map = await _get_scheme_map(db, lines)
-    return _build_tree(lines, scheme_map)
+    contractor_map = await _get_contractor_map(db, lines)
+    return _build_tree(lines, scheme_map, contractor_map)
 
 
 @router.post("/{project_id}/budget/lines", response_model=BudgetLineOut, status_code=status.HTTP_201_CREATED)
@@ -144,6 +169,7 @@ async def create_line(
         rate=data.rate,
         quantity=data.quantity,
         tax_scheme_id=data.tax_scheme_id,
+        contractor_id=data.contractor_id,
         currency=data.currency,
         sort_order=data.sort_order,
         level=level,
@@ -157,7 +183,8 @@ async def create_line(
         scheme_map = await _get_scheme_map(db, [line])
         components = scheme_map.get(line.tax_scheme_id, [])
 
-    return _compute_line(line, components)
+    contractor_map = await _get_contractor_map(db, [line])
+    return _compute_line(line, components, contractor_map)
 
 
 # --- Операции со статьями по ID ---
@@ -171,7 +198,8 @@ async def update_line(
     if not line:
         raise HTTPException(status_code=404, detail="Статья не найдена")
 
-    for field, value in data.model_dump(exclude_none=True).items():
+    # exclude_unset позволяет явно передать None (сброс контрагента/схемы)
+    for field, value in data.model_dump(exclude_unset=True).items():
         setattr(line, field, value)
 
     await db.commit()
@@ -182,7 +210,8 @@ async def update_line(
         scheme_map = await _get_scheme_map(db, [line])
         components = scheme_map.get(line.tax_scheme_id, [])
 
-    return _compute_line(line, components)
+    contractor_map = await _get_contractor_map(db, [line])
+    return _compute_line(line, components, contractor_map)
 
 
 @lines_router.delete("/{line_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -22,6 +22,7 @@ export interface ColumnDef {
 // Основные колонки (всегда видны)
 export const MAIN_COLUMNS: ColumnDef[] = [
   { key: 'name', title: 'Статья', width: 300 },
+  { key: 'contractor_name', title: 'Контрагент', width: 180 },
   { key: 'unit', title: 'Ед.изм.', width: 80 },
   { key: 'quantity_units', title: 'Кол-во ед.', width: 85, type: 'numeric' },
   { key: 'rate', title: 'Ставка', width: 100, type: 'numeric' },
@@ -44,6 +45,7 @@ export const EXTRA_COLUMNS: ColumnDef[] = [
 export function buildHotColumns(
   showExtra: boolean,
   taxSchemeNames: string[],
+  contractorNames: string[],
 ): object[] {
   const cols = [...MAIN_COLUMNS, ...(showExtra ? EXTRA_COLUMNS : [])]
   return cols.map((c) => {
@@ -65,6 +67,17 @@ export function buildHotColumns(
         width: c.width,
         type: 'dropdown',
         source: ['', ...taxSchemeNames],
+      }
+    }
+    if (c.key === 'contractor_name') {
+      return {
+        data: c.key,
+        readOnly: false,
+        width: c.width,
+        type: 'autocomplete',
+        source: ['', ...contractorNames],
+        strict: false,
+        trimDropdown: false,
       }
     }
     return {

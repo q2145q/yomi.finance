@@ -31,6 +31,9 @@ class BudgetLine(Base):
     tax_scheme_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tax_schemes.id", ondelete="SET NULL"), default=None
     )
+    contractor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contractors.id", ondelete="SET NULL"), default=None
+    )
     tax_override: Mapped[bool] = mapped_column(Boolean, default=False)
     currency: Mapped[str] = mapped_column(String(10), default="RUB")
     limit_amount: Mapped[float] = mapped_column(Float, default=0.0)
