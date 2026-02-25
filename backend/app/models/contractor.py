@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Enum as SAEnum, ForeignKey, Text
+from sqlalchemy import String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -18,7 +18,7 @@ class Contractor(Base):
     bank_details_enc: Mapped[str | None] = mapped_column(Text, default=None)
 
     type: Mapped[str] = mapped_column(
-        SAEnum("FL", "SZ", "IP", "OOO", name="contractor_type"),
+        String(10),
         nullable=False,
     )
     inn: Mapped[str | None] = mapped_column(String(12), default=None)

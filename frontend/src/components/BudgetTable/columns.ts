@@ -1,7 +1,6 @@
 /**
  * Конфигурация колонок Handsontable для бюджетной таблицы.
  */
-import type { ColumnSettings } from 'handsontable/settings'
 
 export interface ColumnDef {
   key: string
@@ -33,7 +32,7 @@ export const EXTRA_COLUMNS: ColumnDef[] = [
   { key: 'advance', title: 'Аванс', width: 100, readOnly: true, type: 'numeric' },
 ]
 
-export function buildHotColumns(showExtra: boolean): ColumnSettings[] {
+export function buildHotColumns(showExtra: boolean): object[] {
   const cols = [...MAIN_COLUMNS, ...(showExtra ? EXTRA_COLUMNS : [])]
   return cols.map((c) => ({
     data: c.key,

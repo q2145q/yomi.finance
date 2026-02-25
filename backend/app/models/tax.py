@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import String, Boolean, Float, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, Boolean, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -27,11 +27,11 @@ class TaxComponent(Base):
     name: Mapped[str] = mapped_column(String(50), nullable=False)  # "НПД", "НДФЛ", "Страховые", "НДС"
     rate: Mapped[float] = mapped_column(Float, nullable=False)      # 0.06, 0.13, 0.30, 0.20
     type: Mapped[str] = mapped_column(
-        SAEnum("INTERNAL", "EXTERNAL", name="tax_component_type"),
+        String(20),
         nullable=False,
     )
     recipient: Mapped[str] = mapped_column(
-        SAEnum("CONTRACTOR", "BUDGET", name="tax_recipient"),
+        String(20),
         default="BUDGET",
     )
     sort_order: Mapped[int] = mapped_column(default=0)

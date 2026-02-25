@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Float, Boolean, Integer, ForeignKey, Enum as SAEnum, DateTime
+from sqlalchemy import String, Float, Boolean, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -20,7 +20,7 @@ class BudgetLine(Base):
     code: Mapped[str] = mapped_column(String(50), default="")
     name: Mapped[str] = mapped_column(String(500), nullable=False)
     type: Mapped[str] = mapped_column(
-        SAEnum("GROUP", "ITEM", "SPREAD_ITEM", name="budget_line_type"),
+        String(20),
         default="ITEM",
     )
     unit: Mapped[str | None] = mapped_column(String(50), default=None)
