@@ -4,6 +4,8 @@ import { useAuthStore } from './store/authStore'
 import { LoginPage } from './pages/LoginPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { BudgetPage } from './pages/BudgetPage'
+import { ContractorsPage } from './pages/ContractorsPage'
+import { TaxSchemesPage } from './pages/TaxSchemesPage'
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore()
@@ -29,6 +31,14 @@ const App: React.FC = () => {
         <Route
           path="/projects/:projectId/budget"
           element={<PrivateRoute><BudgetPage /></PrivateRoute>}
+        />
+        <Route
+          path="/contractors"
+          element={<PrivateRoute><ContractorsPage /></PrivateRoute>}
+        />
+        <Route
+          path="/tax-schemes"
+          element={<PrivateRoute><TaxSchemesPage /></PrivateRoute>}
         />
         <Route path="/" element={<Navigate to="/projects" replace />} />
         <Route path="*" element={<Navigate to="/projects" replace />} />

@@ -26,6 +26,8 @@ export interface FlatRow {
   paid: number
   closed: number
   advance: number
+  tax_scheme_id: string | null
+  tax_scheme_name: string
 }
 
 function flattenTree(
@@ -59,6 +61,8 @@ function flattenTree(
       paid: line.paid,
       closed: line.closed,
       advance: line.advance,
+      tax_scheme_id: line.tax_scheme_id,
+      tax_scheme_name: '',
     }
     result.push(row)
 
