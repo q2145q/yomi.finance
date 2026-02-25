@@ -42,19 +42,5 @@ class BudgetLine(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    # Связи
+    # Связи (только используемые)
     project: Mapped["Project"] = relationship("Project", back_populates="budget_lines")
-    tax_scheme: Mapped["TaxScheme | None"] = relationship("TaxScheme")
-    children: Mapped[list["BudgetLine"]] = relationship(
-        "BudgetLine",
-        back_populates="parent",
-        cascade="all, delete-orphan",
-        order_by="BudgetLine.sort_order",
-        foreign_keys="[BudgetLine.parent_id]",
-    )
-    parent: Mapped["BudgetLine | None"] = relationship(
-        "BudgetLine",
-        back_populates="children",
-        remote_side="BudgetLine.id",
-        foreign_keys="[BudgetLine.parent_id]",
-    )

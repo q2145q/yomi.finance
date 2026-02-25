@@ -2,7 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload  # используется в _get_scheme_map
 
 from app.database import get_db
 from app.models.budget import BudgetLine
@@ -19,13 +19,37 @@ router = APIRouter(prefix="/projects", tags=["budget"])
 lines_router = APIRouter(prefix="/budget/lines", tags=["budget"])
 
 
+def _line_to_out(line: BudgetLine) -> BudgetLineOut:
+    """Создаёт BudgetLineOut из скалярных полей модели (без обращения к lazy-relations)."""
+    return BudgetLineOut(
+        id=line.id,
+        project_id=line.project_id,
+        parent_id=line.parent_id,
+        sort_order=line.sort_order,
+        level=line.level,
+        code=line.code,
+        name=line.name,
+        type=line.type,
+        unit=line.unit,
+        quantity_units=line.quantity_units,
+        rate=line.rate,
+        quantity=line.quantity,
+        tax_scheme_id=line.tax_scheme_id,
+        tax_override=line.tax_override,
+        currency=line.currency,
+        limit_amount=line.limit_amount,
+        updated_at=line.updated_at,
+        children=[],
+    )
+
+
 def _compute_line(line: BudgetLine, tax_components: list[dict]) -> BudgetLineOut:
     """Вычисляет subtotal/tax_amount/total для статьи."""
+    out = _line_to_out(line)
     if line.type == "GROUP":
-        return BudgetLineOut.model_validate(line)
+        return out
 
     result = calc_tax(line.rate, line.quantity, tax_components)
-    out = BudgetLineOut.model_validate(line)
     out.subtotal = result["subtotal"]
     out.tax_amount = result["tax_amount"]
     out.total = result["total"]
@@ -193,4 +217,4 @@ async def move_line(
 
     await db.commit()
     await db.refresh(line)
-    return BudgetLineOut.model_validate(line)
+    return _line_to_out(line)
