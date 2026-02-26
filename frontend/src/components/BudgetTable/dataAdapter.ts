@@ -9,12 +9,13 @@ export interface FlatRow {
   _parentId: string | null
   _level: number
   _type: string
-  _expanded: boolean
   _hasChildren: boolean
 
   code: string
   name: string
   unit: string
+  date_start: string | null
+  date_end: string | null
   quantity_units: number
   rate: number
   quantity: number
@@ -32,26 +33,30 @@ export interface FlatRow {
   contractor_name: string
 }
 
-function flattenTree(
-  lines: BudgetLine[],
-  collapsedIds: Set<string>,
-  parentVisible = true,
-): FlatRow[] {
+// Конвертация YYYY-MM-DD → DD.MM.YYYY для отображения в Handsontable
+function isoToDisplay(isoDate: string | null): string | null {
+  if (!isoDate) return null
+  const parts = isoDate.split('-')
+  if (parts.length !== 3) return isoDate
+  return `${parts[2]}.${parts[1]}.${parts[0]}`
+}
+
+function flattenTree(lines: BudgetLine[]): FlatRow[] {
   const result: FlatRow[] = []
 
   for (const line of lines) {
-    const isExpanded = !collapsedIds.has(line.id)
-    const row: FlatRow = {
+    result.push({
       _id: line.id,
       _parentId: line.parent_id,
       _level: line.level,
       _type: line.type,
-      _expanded: isExpanded,
       _hasChildren: line.children.length > 0,
 
       code: line.code,
       name: line.name,
       unit: line.unit || '',
+      date_start: isoToDisplay(line.date_start),
+      date_end: isoToDisplay(line.date_end),
       quantity_units: line.quantity_units,
       rate: line.rate,
       quantity: line.quantity,
@@ -67,19 +72,18 @@ function flattenTree(
       tax_scheme_name: '',
       contractor_id: line.contractor_id,
       contractor_name: line.contractor_name || '',
-    }
-    result.push(row)
+    })
 
-    if (isExpanded && line.children.length > 0) {
-      result.push(...flattenTree(line.children, collapsedIds, true))
+    if (line.children.length > 0) {
+      result.push(...flattenTree(line.children))
     }
   }
 
   return result
 }
 
-export function buildTableData(tree: BudgetLine[], collapsedIds: Set<string>): FlatRow[] {
-  return flattenTree(tree, collapsedIds)
+export function buildTableData(tree: BudgetLine[]): FlatRow[] {
+  return flattenTree(tree)
 }
 
 export function formatNumber(val: number): string {

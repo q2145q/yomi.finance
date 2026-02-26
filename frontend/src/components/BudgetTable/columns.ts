@@ -24,6 +24,8 @@ export const MAIN_COLUMNS: ColumnDef[] = [
   { key: 'name', title: 'Статья', width: 300 },
   { key: 'contractor_name', title: 'Контрагент', width: 180 },
   { key: 'unit', title: 'Ед.изм.', width: 80 },
+  { key: 'date_start', title: 'Начало', width: 105 },
+  { key: 'date_end', title: 'Окончание', width: 105 },
   { key: 'quantity_units', title: 'Кол-во ед.', width: 85, type: 'numeric' },
   { key: 'rate', title: 'Ставка', width: 100, type: 'numeric' },
   { key: 'quantity', title: 'Кол-во', width: 80, type: 'numeric' },
@@ -58,6 +60,17 @@ export function buildHotColumns(
         source: UNIT_OPTIONS,
         strict: false,
         trimDropdown: false,
+      }
+    }
+    if (c.key === 'date_start' || c.key === 'date_end') {
+      return {
+        data: c.key,
+        width: c.width,
+        type: 'date',
+        dateFormat: 'DD.MM.YYYY',
+        correctFormat: true,
+        allowEmpty: true,
+        // Pikaday откроется только если ячейка не readOnly (управляется через cells callback)
       }
     }
     if (c.key === 'tax_scheme_name') {

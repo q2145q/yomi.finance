@@ -20,9 +20,16 @@ interface Props {
   onUpdate: () => void
 }
 
+// Конвертация DD.MM.YYYY → YYYY-MM-DD для бэкенда
+function displayToIso(val: string): string | null {
+  if (!val) return null
+  const parts = val.split('.')
+  if (parts.length !== 3) return null
+  return `${parts[2]}-${parts[1]}-${parts[0]}`
+}
+
 export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
   const hotRef = useRef<any>(null)
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
   const [showExtra, setShowExtra] = useState(false)
   const [flatData, setFlatData] = useState<FlatRow[]>([])
   const [saving, setSaving] = useState(false)
@@ -51,27 +58,17 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
     [contractors],
   )
 
-  // Пересчитываем плоский список при изменении дерева, групп или справочников
+  // Пересчитываем плоский список при изменении дерева или справочников
   useEffect(() => {
-    const rows = buildTableData(tree, collapsedIds)
+    const rows = buildTableData(tree)
     rows.forEach((r) => {
       r.tax_scheme_name = taxSchemeIdToName(r.tax_scheme_id)
-      // contractor_name уже приходит с бэкенда, но если пусто — ищем локально
       if (!r.contractor_name && r.contractor_id) {
         r.contractor_name = contractors.find((c) => c.id === r.contractor_id)?.full_name || ''
       }
     })
     setFlatData(rows)
-  }, [tree, collapsedIds, taxSchemeIdToName, contractors])
-
-  const toggleCollapse = useCallback((id: string) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
+  }, [tree, taxSchemeIdToName, contractors])
 
   // Трекинг выбранной строки
   const handleAfterSelection = useCallback(
@@ -97,6 +94,8 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
             patchData = { tax_scheme_id: taxSchemeNameToId(newVal as string) }
           } else if (prop === 'contractor_name') {
             patchData = { contractor_id: contractorNameToId(newVal as string) }
+          } else if (prop === 'date_start' || prop === 'date_end') {
+            patchData = { [prop as string]: displayToIso(newVal as string) }
           } else {
             patchData = { [prop as string]: newVal }
           }
@@ -192,7 +191,7 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
     return ''
   })
 
-  // Рендер ячейки name
+  // Рендер ячейки name — без стрелок, только отступ и жирность
   const nameRenderer = useCallback(
     (_instance: Handsontable, td: HTMLTableCellElement, row: number) => {
       const rowData = flatData[row]
@@ -201,28 +200,13 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
       const indent = rowData._level * 16
       td.innerHTML = ''
       td.style.paddingLeft = `${indent + 8}px`
-
-      if (rowData._hasChildren) {
-        const arrow = document.createElement('span')
-        arrow.textContent = rowData._expanded ? '▼ ' : '▶ '
-        arrow.style.cursor = 'pointer'
-        arrow.style.color = 'var(--color-text-muted)'
-        arrow.style.fontSize = '10px'
-        arrow.style.marginRight = '4px'
-        arrow.addEventListener('mousedown', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          toggleCollapse(rowData._id)
-        })
-        td.appendChild(arrow)
-      }
-
       td.appendChild(document.createTextNode(rowData.name))
 
       if (rowData._level === 0) td.style.fontWeight = '700'
       else if (rowData._level === 1) td.style.fontWeight = '600'
+      else td.style.fontWeight = '400'
     },
-    [flatData, toggleCollapse],
+    [flatData],
   )
 
   const taxSchemeNames = taxSchemes.map((s) => s.name)
@@ -291,18 +275,6 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
         >
           {showExtra ? 'Скрыть финансы' : 'Показать финансы'}
         </button>
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={() => setCollapsedIds(new Set())}
-        >
-          Развернуть всё
-        </button>
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={() => setCollapsedIds(new Set(tree.map((l) => l.id)))}
-        >
-          Свернуть всё
-        </button>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <button
@@ -364,22 +336,24 @@ export const BudgetTable: React.FC<Props> = ({ projectId, tree, onUpdate }) => {
           outsideClickDeselects={false}
           enterMoves={{ row: 1, col: 0 }}
           tabMoves={{ row: 0, col: 1 }}
-          cells={(row) => {
+          cells={(row, _col, prop) => {
             const rowData = flatData[row]
             if (!rowData) return {}
+            const isGroup = rowData._type === 'GROUP'
+            const isDateCol = prop === 'date_start' || prop === 'date_end'
+            const isDateDisabled = isDateCol && rowData.unit !== 'мес'
+            const isDateActive = isDateCol && !isGroup && rowData.unit === 'мес'
             return {
-              className: rowClassNames[row] || '',
-              readOnly: rowData._type === 'GROUP',
+              className: [
+                rowClassNames[row] || '',
+                isDateDisabled ? 'date-disabled' : '',
+                isDateActive ? 'date-active' : '',
+              ].filter(Boolean).join(' '),
+              readOnly: isGroup || isDateDisabled,
             }
           }}
           afterChange={handleAfterChange}
           afterSelectionEnd={(r1) => handleAfterSelection(r1)}
-          afterOnCellMouseDown={(_e, coords) => {
-            const rowData = flatData[coords.row]
-            if (rowData?._hasChildren && coords.col === 0) {
-              toggleCollapse(rowData._id)
-            }
-          }}
         />
       </div>
     </div>

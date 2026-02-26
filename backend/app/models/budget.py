@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Float, Boolean, Integer, ForeignKey, DateTime
+from datetime import date
+from sqlalchemy import String, Float, Boolean, Integer, ForeignKey, DateTime, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -24,6 +25,8 @@ class BudgetLine(Base):
         default="ITEM",
     )
     unit: Mapped[str | None] = mapped_column(String(50), default=None)
+    date_start: Mapped[date | None] = mapped_column(Date, default=None)
+    date_end: Mapped[date | None] = mapped_column(Date, default=None)
     quantity_units: Mapped[float] = mapped_column(Float, default=1.0)
     rate: Mapped[float] = mapped_column(Float, default=0.0)
     quantity: Mapped[float] = mapped_column(Float, default=1.0)

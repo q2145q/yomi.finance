@@ -146,23 +146,153 @@ input, select, textarea {
 .handsontable th {
   background: var(--color-surface-2) !important;
   font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  color: var(--color-text-muted) !important;
 }
+
+/* ─── Разделы (level 0) — синяя тема ─── */
 .handsontable .row-category td {
-  background: var(--color-surface-2) !important;
+  background: #16213e !important;
+  color: #a8c1ff !important;
   font-weight: 700 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.03em !important;
+  border-top: 2px solid #2e3f7a !important;
+  border-bottom: 1px solid #2e3f7a !important;
 }
+.handsontable .row-category td:first-child {
+  border-left: 4px solid #6c8cff !important;
+  padding-left: 4px !important;
+}
+/* Числовые ячейки разделов — скрыть значения и интерактивность */
+.handsontable .row-category td:not(:first-child) {
+  color: #16213e !important;
+  cursor: default !important;
+}
+/* Скрыть стрелки дропдаунов в разделах */
+.handsontable .row-category td .htAutocompleteArrow {
+  display: none !important;
+}
+
+/* ─── Подразделы (level 1) — тёмно-бирюзовая тема ─── */
 .handsontable .row-subcategory td {
-  background: var(--color-surface) !important;
+  background: #152630 !important;
+  color: #7ecfb0 !important;
   font-weight: 600 !important;
+  font-size: 12.5px !important;
+  border-bottom: 1px solid #1e3a42 !important;
 }
+.handsontable .row-subcategory td:first-child {
+  border-left: 3px solid #4caf78 !important;
+}
+/* Числовые ячейки подразделов — скрыть значения и интерактивность */
+.handsontable .row-subcategory td:not(:first-child) {
+  color: #152630 !important;
+  cursor: default !important;
+}
+/* Скрыть стрелки дропдаунов в подразделах */
+.handsontable .row-subcategory td .htAutocompleteArrow {
+  display: none !important;
+}
+
+/* ─── Статьи — обычный стиль ─── */
+.handsontable tr:not(.row-category):not(.row-subcategory) td {
+  background: var(--color-surface) !important;
+}
+
+/* ─── Выбранная строка ─── */
 .handsontable tr.currentRow td {
-  background: #1e2235 !important;
+  background: #1e2340 !important;
+  filter: brightness(1.1) !important;
+}
+.handsontable .row-category.currentRow td {
+  background: #1c2d5e !important;
+  filter: none !important;
+}
+.handsontable .row-subcategory.currentRow td {
+  background: #1b3640 !important;
+  filter: none !important;
 }
 .handsontable td.current {
-  background: #252a40 !important;
+  background: #1e2340 !important;
   outline: 2px solid var(--color-primary) !important;
   outline-offset: -2px !important;
 }
 .handsontable .htAutocomplete {
   background: var(--color-surface-2) !important;
+}
+
+/* ─── Неактивные ячейки дат (unit != мес) ─── */
+.handsontable td.date-disabled {
+  background: #111318 !important;
+  color: #2a2d3f !important;
+  cursor: not-allowed !important;
+}
+
+/* ─── Активные ячейки дат (unit = мес) ─── */
+.handsontable td.date-active {
+  background: rgba(108, 140, 255, 0.07) !important;
+  color: var(--color-text) !important;
+}
+.handsontable td.date-active.current {
+  background: rgba(108, 140, 255, 0.18) !important;
+}
+
+/* ─── Pikaday date picker тёмная тема ─── */
+.pika-single {
+  font-family: var(--font-sans) !important;
+  font-size: 13px !important;
+  background: #1a1d27 !important;
+  border: 1px solid #2e3148 !important;
+  border-radius: 8px !important;
+  color: #e8eaf0 !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+}
+.pika-title {
+  background: #232636 !important;
+  border-radius: 8px 8px 0 0 !important;
+}
+.pika-label {
+  color: #e8eaf0 !important;
+  background: transparent !important;
+}
+.pika-prev, .pika-next {
+  opacity: 0.7 !important;
+}
+.pika-prev:hover, .pika-next:hover {
+  opacity: 1 !important;
+}
+.pika-table th {
+  color: #7b7f99 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+.pika-table td {
+  color: #e8eaf0 !important;
+}
+.pika-button {
+  background: transparent !important;
+  color: #e8eaf0 !important;
+  border-radius: 4px !important;
+}
+.pika-button:hover {
+  background: #2e3148 !important;
+  color: #a8c1ff !important;
+}
+.is-selected .pika-button {
+  background: #6c8cff !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+.is-today .pika-button {
+  color: #6c8cff !important;
+  font-weight: 700 !important;
+}
+.is-disabled .pika-button {
+  color: #3a3d55 !important;
+  cursor: not-allowed !important;
 }

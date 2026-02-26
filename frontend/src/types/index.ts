@@ -112,6 +112,8 @@ export interface BudgetLine {
   name: string
   type: BudgetLineType
   unit: string | null
+  date_start: string | null
+  date_end: string | null
   quantity_units: number
   rate: number
   quantity: number

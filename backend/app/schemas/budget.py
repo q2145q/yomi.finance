@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel
 from typing import Optional, Any
 
@@ -9,6 +9,8 @@ class BudgetLineCreate(BaseModel):
     name: str
     type: str = "ITEM"
     unit: Optional[str] = None
+    date_start: Optional[date] = None
+    date_end: Optional[date] = None
     quantity_units: float = 1.0
     rate: float = 0.0
     quantity: float = 1.0
@@ -21,6 +23,8 @@ class BudgetLineCreate(BaseModel):
 class BudgetLineUpdate(BaseModel):
     name: Optional[str] = None
     unit: Optional[str] = None
+    date_start: Optional[date] = None
+    date_end: Optional[date] = None
     quantity_units: Optional[float] = None
     rate: Optional[float] = None
     quantity: Optional[float] = None
@@ -42,6 +46,8 @@ class BudgetLineOut(BaseModel):
     name: str
     type: str
     unit: Optional[str]
+    date_start: Optional[date] = None
+    date_end: Optional[date] = None
     quantity_units: float
     rate: float
     quantity: float
