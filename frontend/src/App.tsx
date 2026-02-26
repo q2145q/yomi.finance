@@ -7,6 +7,7 @@ import { BudgetPage } from './pages/BudgetPage'
 import { ContractorsPage } from './pages/ContractorsPage'
 import { TaxSchemesPage } from './pages/TaxSchemesPage'
 import { ContractsPage } from './pages/ContractsPage'
+import { ProductionPage } from './pages/ProductionPage'
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuthStore()
@@ -36,6 +37,10 @@ const App: React.FC = () => {
         <Route
           path="/projects/:projectId/contracts"
           element={<PrivateRoute><ContractsPage /></PrivateRoute>}
+        />
+        <Route
+          path="/projects/:projectId/production"
+          element={<PrivateRoute><ProductionPage /></PrivateRoute>}
         />
         <Route
           path="/contractors"

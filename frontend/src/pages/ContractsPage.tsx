@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../components/Layout/AppLayout'
+import { ProjectTabs } from '../components/Layout/ProjectTabs'
 import { contractsApi, type ContractCreateData } from '../api/contracts'
 import { contractorsApi } from '../api/contractors'
 import { taxSchemesApi } from '../api/taxSchemes'
@@ -195,20 +196,7 @@ export const ContractsPage: React.FC = () => {
           <button className="btn btn-secondary btn-sm" onClick={() => navigate('/projects')}>
             ← Проекты
           </button>
-          <span style={{ fontWeight: 600, color: 'var(--color-text-muted)', fontSize: 13 }}>
-            {projectId.slice(0, 8)}…
-          </span>
-
-          {/* Вкладки проекта */}
-          <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
-            <Link
-              to={`/projects/${projectId}/budget`}
-              style={tabStyle(false)}
-            >
-              Бюджет
-            </Link>
-            <span style={tabStyle(true)}>Договоры</span>
-          </div>
+          <ProjectTabs projectId={projectId} active="contracts" />
         </div>
 
         {/* Контент */}
@@ -583,16 +571,3 @@ const tagStyle: React.CSSProperties = {
   border: '1px solid var(--color-border)',
 }
 
-function tabStyle(active: boolean): React.CSSProperties {
-  return {
-    padding: '4px 14px',
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: 500,
-    color: active ? 'var(--color-primary)' : 'var(--color-text-muted)',
-    background: active ? 'rgba(108,140,255,0.1)' : 'transparent',
-    cursor: active ? 'default' : 'pointer',
-    textDecoration: 'none',
-    display: 'inline-block',
-  }
-}

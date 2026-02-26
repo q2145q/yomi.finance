@@ -13,6 +13,7 @@ import app.models  # noqa: F401
 from app.routers import auth, projects, contractors, tax, export
 from app.routers.budget import router as budget_router, lines_router
 from app.routers.contracts import router as contracts_router
+from app.routers.production import router as production_router
 
 
 @asynccontextmanager
@@ -48,6 +49,7 @@ app.include_router(budget_router, prefix=API_PREFIX)
 app.include_router(lines_router, prefix=API_PREFIX)
 app.include_router(export.router, prefix=API_PREFIX)
 app.include_router(contracts_router, prefix=API_PREFIX)
+app.include_router(production_router, prefix=API_PREFIX)
 
 
 @app.get("/health")

@@ -139,6 +139,64 @@ export interface BudgetLine {
   updated_at: string
 }
 
+// Производственный отчёт
+export type ReportEntryStatus = 'PENDING' | 'APPROVED' | 'IN_PAYMENT' | 'PAID'
+export type ReportEntrySource = 'MANUAL' | 'TG_BOT' | 'ASSISTANT'
+export type ProductionReportStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED'
+
+export const REPORT_ENTRY_STATUS_LABELS: Record<ReportEntryStatus, string> = {
+  PENDING: 'Ожидает',
+  APPROVED: 'Утверждено',
+  IN_PAYMENT: 'В заявке',
+  PAID: 'Оплачено',
+}
+
+export interface ReportEntry {
+  id: string
+  report_id: string
+  contractor_id: string
+  contractor_name: string
+  budget_line_id: string | null
+  budget_line_name: string | null
+  contract_id: string | null
+  contract_number: string | null
+  source: ReportEntrySource
+  shift_start: string | null
+  shift_end: string | null
+  lunch_break_minutes: number
+  gap_minutes: number
+  overtime_hours: number
+  equipment: string | null
+  unit: string
+  quantity: number
+  rate: number
+  tax_scheme_id: string | null
+  amount_net: number
+  amount_gross: number
+  status: ReportEntryStatus
+  ai_parsed: boolean
+  ai_confidence: number | null
+  created_at: string
+}
+
+export interface ProductionReport {
+  id: string
+  project_id: string
+  shoot_day_number: number
+  date: string
+  location: string | null
+  shooting_group: string | null
+  notes: string | null
+  status: ProductionReportStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  entries: ReportEntry[]
+  total_net: number
+  total_gross: number
+  entry_count: number
+}
+
 // Договоры
 export type ContractPaymentType = 'SALARY' | 'PER_SHIFT' | 'PERIODIC'
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED'

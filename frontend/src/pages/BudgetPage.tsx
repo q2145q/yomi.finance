@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../components/Layout/AppLayout'
+import { ProjectTabs } from '../components/Layout/ProjectTabs'
 import { BudgetTable } from '../components/BudgetTable/BudgetTable'
 import { budgetApi } from '../api/budget'
 import { projectsApi } from '../api/projects'
@@ -58,31 +59,7 @@ export const BudgetPage: React.FC = () => {
           <span style={{ fontWeight: 600 }}>{project?.name || '...'}</span>
 
           {/* Вкладки проекта */}
-          <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
-            <span style={{
-              padding: '4px 14px',
-              borderRadius: 6,
-              fontSize: 13,
-              fontWeight: 500,
-              color: 'var(--color-primary)',
-              background: 'rgba(108,140,255,0.1)',
-            }}>
-              Бюджет
-            </span>
-            <Link
-              to={`/projects/${projectId}/contracts`}
-              style={{
-                padding: '4px 14px',
-                borderRadius: 6,
-                fontSize: 13,
-                fontWeight: 500,
-                color: 'var(--color-text-muted)',
-                textDecoration: 'none',
-              }}
-            >
-              Договоры
-            </Link>
-          </div>
+          <ProjectTabs projectId={projectId!} active="budget" />
         </div>
 
         {loading ? (

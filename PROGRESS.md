@@ -17,12 +17,17 @@
 - 2026-02-26 Бюджет: поля date_start/date_end + Pikaday datepicker (только для ед.изм. "мес")
 - 2026-02-26 Миграция 003: date_start, date_end в budget_lines
 - 2026-02-26 Этап 2: Договоры (Contract) — бэкенд + фронтенд
-  - Модель Contract + ContractBudgetLine (many-to-many к статьям бюджета)
-  - Миграция 004: таблицы contracts + contract_budget_lines
+  - Модель Contract + ContractBudgetLine + миграция 004
   - API: GET/POST/PATCH/DELETE /api/v1/contracts
-  - ContractsPage: список, форма создания/редактирования, привязка к статьям бюджета
-  - Автоподстановка налог.схемы из контрагента (ручное изменение = флаг tax_override)
-  - Вкладки "Бюджет / Договоры" в шапке проекта
+  - ContractsPage: список, форма, привязка к статьям бюджета
+  - Автоподстановка налог.схемы из контрагента (tax_override флаг)
+- 2026-02-26 Этап 2: Производственный отчёт — бэкенд + фронтенд
+  - Модели ProductionReport + ReportEntry + миграция 005
+  - API: /production/projects/{id}/reports, /production/reports/{id}, /production/entries/{id}
+  - Расчёт overtime_hours (смена − обед − разрыв − 12ч базовая)
+  - Расчёт amount_net/amount_gross через налоговые схемы
+  - ProductionPage: панель дней + детализация записей, форма ручного ввода
+  - ProjectTabs-компонент: единые вкладки Бюджет/Договоры/Производство
 
 ## Заблокировано
 - (пусто)
