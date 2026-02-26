@@ -138,3 +138,40 @@ export interface BudgetLine {
   children: BudgetLine[]
   updated_at: string
 }
+
+// Договоры
+export type ContractPaymentType = 'SALARY' | 'PER_SHIFT' | 'PERIODIC'
+export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'CLOSED'
+
+export const CONTRACT_PAYMENT_TYPE_LABELS: Record<ContractPaymentType, string> = {
+  SALARY: 'Оклад',
+  PER_SHIFT: 'Посменно',
+  PERIODIC: 'Периодически',
+}
+
+export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
+  DRAFT: 'Черновик',
+  ACTIVE: 'Действует',
+  CLOSED: 'Закрыт',
+}
+
+export interface Contract {
+  id: string
+  number: string
+  project_id: string
+  contractor_id: string
+  contractor_name: string
+  payment_type: ContractPaymentType
+  payment_period: string | null
+  currency: string
+  status: ContractStatus
+  signed_at: string | null
+  valid_from: string | null
+  valid_to: string | null
+  tax_scheme_id: string | null
+  tax_override: boolean
+  notes: string | null
+  budget_line_ids: string[]
+  created_at: string
+  updated_at: string
+}

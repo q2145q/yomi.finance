@@ -1,5 +1,5 @@
 # Статус разработки
-Обновлено: 2026-02-25
+Обновлено: 2026-02-26
 
 ## Сейчас в работе
 - (нет активных задач)
@@ -14,6 +14,15 @@
 - 2026-02-25 Frontend Этап 1: React + TypeScript + Vite + Handsontable + Zustand
 - 2026-02-25 Frontend: страница входа, проекты, бюджетная таблица с деревом
 - 2026-02-25 Коммит и push в GitHub (main)
+- 2026-02-26 Бюджет: поля date_start/date_end + Pikaday datepicker (только для ед.изм. "мес")
+- 2026-02-26 Миграция 003: date_start, date_end в budget_lines
+- 2026-02-26 Этап 2: Договоры (Contract) — бэкенд + фронтенд
+  - Модель Contract + ContractBudgetLine (many-to-many к статьям бюджета)
+  - Миграция 004: таблицы contracts + contract_budget_lines
+  - API: GET/POST/PATCH/DELETE /api/v1/contracts
+  - ContractsPage: список, форма создания/редактирования, привязка к статьям бюджета
+  - Автоподстановка налог.схемы из контрагента (ручное изменение = флаг tax_override)
+  - Вкладки "Бюджет / Договоры" в шапке проекта
 
 ## Заблокировано
 - (пусто)
